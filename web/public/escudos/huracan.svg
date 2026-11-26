@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 120" role="img" aria-label="Huracán">
+<defs>
+<linearGradient id="grad" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#E31E24" stop-opacity=".8"/><stop offset="1" stop-color="#E31E24"/></linearGradient>
+<clipPath id="clip"><path d="M50 3 L93 18 V58 C93 88 73 108 50 118 C27 108 7 88 7 58 V18 Z"/></clipPath>
+</defs>
+<path d="M50 3 L93 18 V58 C93 88 73 108 50 118 C27 108 7 88 7 58 V18 Z" fill="url(#grad)"/>
+<g clip-path="url(#clip)"><polygon points="-10,100 110,12 110,50 -10,138" fill="#ffffff" opacity=".95"/></g>
+<path d="M50 3 L93 18 V58 C93 88 73 108 50 118 C27 108 7 88 7 58 V18 Z" fill="none" stroke="#F5D06B" stroke-width="4"/>
+<path d="M50 3 L93 18 V58 C93 88 73 108 50 118 C27 108 7 88 7 58 V18 Z" fill="none" stroke="#ffffff" stroke-opacity=".35" stroke-width="1.2"/>
+
+<circle cx="50" cy="64" r="25" fill="#0a0e27" fill-opacity=".6" stroke="#F5D06B" stroke-width="1.5"/>
+<text x="50" y="71" text-anchor="middle" font-family="Arial Black,Arial,sans-serif" font-size="29" font-weight="900" fill="#ffffff" letter-spacing="-1">HUR</text>
+<text x="50" y="102" text-anchor="middle" font-family="Arial,sans-serif" font-size="9" font-weight="700" fill="#ffffff" letter-spacing="1">HUR</text>
+</svg>
