@@ -39,3 +39,4 @@ Guardás y hacés **Redeploy**. Las variables de entorno se mantienen igual; `AP
 - Pago verificado: abrir MercadoPago ya no muestra éxito falso; se verifica con `MP_ACCESS_TOKEN` o por comprobante con `[InvitaFigus · PAGO]`.
 - Tarjeta hacia **Invita con el Alma** en la pantalla posterior al checkout y mención en el footer.
 - RSVP persistente, 29 equipos con escudos, audio de hinchada y links de WhatsApp con prefijo por producto.
+- 
