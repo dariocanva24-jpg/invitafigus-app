@@ -1,5 +1,5 @@
-import { useState, useRef } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useState, useRef, useEffect } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { ChevronLeft, Camera, Check, X, Star, Calendar, Clock, MapPin } from 'lucide-react'
 import { useApp } from '../context/AppContext'
@@ -7,8 +7,10 @@ import PlayerCard from '../components/invitation/PlayerCard'
 import Watermark from '../components/invitation/Watermark'
 import { sendToGoogleForm } from '../services/googleForm'
 import { teams } from '../data/teams'
-import { whatsappLinks } from '../config/whatsapp'
+import { whatsappLinks, chatUrl } from '../config/whatsapp'
 import AlmaCrossSellCard from '../components/crossSell/AlmaCrossSellCard.jsx'
+import CountdownTimer from '../components/invitation/CountdownTimer.jsx'
+import SparkleField from '../components/brand/SparkleField.jsx'
 
 
 export default function CreatePage() {
@@ -23,6 +25,11 @@ export default function CreatePage() {
   const [paymentStatus, setPaymentStatus] = useState('idle')
   const [paymentId, setPaymentId] = useState('')
   const [paymentMessage, setPaymentMessage] = useState('')
+  const [customTeamName, setCustomTeamName] = useState('')
+  const [panelKey, setPanelKey] = useState('')
+  const [saveStatus, setSaveStatus] = useState('idle') // idle | saving | saved | pending
+  const [showManualVerify, setShowManualVerify] = useState(false)
+  const [searchParams] = useSearchParams()
 
   const [formData, setFormData] = useState({
     childName: '',
@@ -68,6 +75,7 @@ export default function CreatePage() {
         break
       case 2:
         if (!formData.team) newErrors.team = 'Elegí un equipo'
+        if (formData.team === 'custom' && !customTeamName.trim()) newErrors.customTeam = 'Escribí el nombre del equipo'
         break
       case 3:
         if (!formData.childName.trim()) newErrors.childName = 'El nombre es obligatorio'
@@ -108,7 +116,7 @@ export default function CreatePage() {
         apellido: formData.honoreeName,
         apodo: formData.nickname,
         edad: formData.honoreeAge,
-        equipo: teams.find(t => t.id === formData.team)?.name || formData.team,
+        equipo: formData.team === 'custom' ? (customTeamName.trim() || 'Equipo personalizado') : (teams.find(t => t.id === formData.team)?.name || formData.team),
         fecha: formData.date,
         hora: `${formData.startTime} - ${formData.endTime}`,
         lugar: formData.location || formData.address,
@@ -129,10 +137,22 @@ export default function CreatePage() {
           ...formData,
           honoreeAge: parseInt(formData.honoreeAge),
           time: `${formData.startTime} - ${formData.endTime}`,
-          slug: `${formData.childName.toLowerCase().replace(/\s+/g, '-')}-${formData.honoreeAge}-${formData.team}`,
+          slug: `${formData.childName.toLowerCase().replace(/\s+/g, '-')}-${formData.honoreeAge}-${formData.team === 'custom' ? 'personalizado' : formData.team}`,
+          customTeamName: formData.team === 'custom' ? customTeamName.trim() : '',
           status: 'preview',
         })
         setCreatedInvitation(invitation)
+        // Clave privada del panel del organizador (asistentes / no asistentes).
+        fetch('/api/panel', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'issue', code: invitation.slug }),
+        }).then(r => r.json()).then(data => {
+          if (data?.key) {
+            setPanelKey(data.key)
+            localStorage.setItem(`invitafigus_panel_${invitation.slug}`, data.key)
+          }
+        }).catch(() => {})
         setStep(6)
         setIsLoading(false)
       } catch (error) {
@@ -142,19 +162,121 @@ export default function CreatePage() {
     }, 2500)
   }
 
-  const openPayment = () => {
-    const code = createdInvitation?.slug || `${formData.childName.toLowerCase().replace(/\s+/g, '-')}-${formData.honoreeAge}-${formData.team}`
-    fetch('/api/payment', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'start', code }),
-    }).catch((error) => console.error('No se pudo registrar el pago:', error))
-    window.open('https://mpago.la/1X2RD5k', '_blank')
+  // Guarda el pedido en la planilla (estado PENDIENTE) para que el operador
+  // pueda activarlo aunque el cliente cierre el navegador o pierda el link.
+  const saveOrder = async (code) => {
+    if (!code) return
+    setSaveStatus('saving')
+    try {
+      const res = await fetch('/api/invitations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'create',
+          paymentId: paymentId || '',
+          invitation: {
+            ...formData,
+            slug: code,
+            customTeamName: customTeamName.trim(),
+            time: `${formData.startTime} - ${formData.endTime}`,
+            honoreeAge: parseInt(formData.honoreeAge, 10) || '',
+          },
+        }),
+      })
+      const data = await res.json().catch(() => ({}))
+      setSaveStatus(data.saved ? 'saved' : 'pending')
+    } catch {
+      setSaveStatus('pending')
+    }
+  }
+
+  // Flujo de pago senior: intenta crear preferencia Checkout Pro (retorno automático),
+  // si no hay token de MP configurado usa el link de pago estático como fallback.
+  // Guardamos el código para poder verificar al volver sin pedir el nº de operación.
+  const openPayment = async () => {
+    const code = createdInvitation?.slug || `${formData.childName.toLowerCase().replace(/\s+/g, '-')}-${formData.honoreeAge}-${formData.team === 'custom' ? 'personalizado' : formData.team}`
+    try {
+      localStorage.setItem('invitafigus_pending_payment', JSON.stringify({ code, ts: Date.now() }))
+    } catch {}
     setPaymentStatus('pending')
-    setPaymentMessage('')
+    setPaymentMessage('Te abrimos Mercado Pago en otra pestaña. Cuando termines, volvé acá: verificamos solos, sin que escribas nada.')
+    saveOrder(code)
     setShowPaymentModal(false)
     setStep(7)
+    // Abrimos la pestaña en el mismo gesto del click (si esperamos al fetch,
+    // el navegador bloquea el popup). Después le ponemos la URL definitiva.
+    const tab = window.open('about:blank', '_blank')
+    const goTo = (url) => {
+      if (tab && !tab.closed) tab.location.href = url
+      else window.open(url, '_blank')
+    }
+    try {
+      const res = await fetch('/api/payment', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'create', code, baseUrl: window.location.origin }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (res.ok && data.initPoint) {
+        goTo(data.initPoint)
+        return
+      }
+      // Fallback: link de pago estático (se verifica por polling del estado)
+      goTo('https://mpago.la/1X2RD5k')
+    } catch {
+      goTo('https://mpago.la/1X2RD5k')
+    }
   }
+
+  // Polling automático: cada 4s pregunta si el pago ya se acreditó. Así el usuario
+  // no tiene que buscar el número de operación.
+  useEffect(() => {
+    if (step !== 7 || paymentStatus === 'paid') return
+    const code = createdInvitation?.slug
+    if (!code) return
+    const id = setInterval(async () => {
+      try {
+        const res = await fetch('/api/payment', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'status', code }),
+        })
+        const data = await res.json().catch(() => ({}))
+        if (data.status === 'paid') {
+          setPaymentStatus('paid')
+          setPaymentMessage('Pago acreditado. Tu invitación quedó activada.')
+          try { localStorage.removeItem('invitafigus_pending_payment') } catch {}
+        }
+      } catch {}
+    }, 4000)
+    return () => clearInterval(id)
+  }, [step, paymentStatus, createdInvitation?.slug])
+
+  // Retorno de Mercado Pago: ?status=success&payment_id=...&external_reference=codigo
+  useEffect(() => {
+    const status = searchParams.get('status')
+    const pid = searchParams.get('payment_id') || searchParams.get('collection_id')
+    const ref = searchParams.get('external_reference')
+    if (!status || !createdInvitation?.slug) return
+    if (status === 'success' && pid) {
+      setPaymentId(String(pid))
+      setStep(7)
+      setPaymentStatus('checking')
+      fetch('/api/payment', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'verify', code: ref || createdInvitation.slug, paymentId: String(pid) }),
+      }).then(r => r.json()).then(data => {
+        if (data.status === 'paid') {
+          setPaymentStatus('paid')
+          setPaymentMessage('Pago acreditado. Tu invitación quedó activada.')
+        } else {
+          setPaymentStatus('pending')
+          setPaymentMessage('Volviste de Mercado Pago. Estamos verificando tu pago, puede tardar unos minutos.')
+        }
+      }).catch(() => setPaymentStatus('pending'))
+    }
+  }, [searchParams, createdInvitation?.slug])
 
   const verifyPayment = async () => {
     const code = createdInvitation?.slug
@@ -199,8 +321,15 @@ export default function CreatePage() {
         <div className="max-w-lg mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <button 
-              onClick={() => step > 1 && step !== 6 && step !== 7 ? handleBack() : navigate('/')}
+              onClick={() => {
+                if (step === 6 || step === 7) {
+                  if (createdInvitation?.slug) navigate(`/invitacion/${createdInvitation.slug}`)
+                  else navigate('/')
+                } else if (step > 1) handleBack()
+                else navigate('/')
+              }}
               className="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center hover:bg-white/10 transition-colors"
+              aria-label={step === 6 || step === 7 ? 'Ver mi invitación' : 'Volver'}
             >
               {step > 1 && step !== 6 && step !== 7 ? <ChevronLeft size={20} /> : <X size={20} />}
             </button>
@@ -226,12 +355,11 @@ export default function CreatePage() {
               )}
             </div>
           </div>
-          <button 
-            onClick={() => navigate('/')}
-            className="text-white/30 hover:text-white/60 transition-colors"
-          >
-            <X size={20} />
-          </button>
+          {(step === 6 || step === 7) && createdInvitation?.slug ? (
+            <button onClick={() => navigate(`/invitacion/${createdInvitation.slug}`)} className="text-[#FFD700] text-xs font-bold hover:underline">Ver invitación</button>
+          ) : (
+            <button onClick={() => navigate('/')} className="text-white/30 hover:text-white/60 transition-colors"><X size={20} /></button>
+          )}
         </div>
       </div>
 
@@ -274,7 +402,15 @@ export default function CreatePage() {
                 <h2 className="text-3xl font-black font-bebas tracking-wider mt-2">Elegí el equipo</h2>
                 <p className="text-white/40 text-sm mt-2">La camiseta de tu equipo, con escudo propio.</p>
               </div>
+              <div className="mb-4 rounded-xl border border-[#FFD700]/25 bg-[#FFD700]/[0.04] p-4 text-center">
+                <p className="text-white/70 text-sm font-semibold">¿No está tu equipo?</p>
+                <p className="text-white/50 text-xs mt-1">Elegí <b className="text-[#FFD700]">Equipo personalizado</b>, escribí el nombre y después nos mandás el escudo o logo por WhatsApp. Lo preparamos para tu figurita.</p>
+              </div>
               <div className="grid max-h-[420px] grid-cols-3 gap-3 overflow-y-auto pr-1">
+                <button onClick={() => updateField('team', 'custom')} className={`p-4 rounded-xl border-2 border-dashed transition-all ${formData.team === 'custom' ? 'border-[#FFD700] bg-[#FFD700]/10' : 'border-[#FFD700]/40 bg-[#FFD700]/[0.03] hover:border-[#FFD700]/70'}`}>
+                  <div className="w-12 h-12 mx-auto mb-2 rounded-full bg-[#FFD700]/15 flex items-center justify-center text-xl">✨</div>
+                  <p className="text-[10px] text-[#FFD700] text-center font-bold">Equipo personalizado</p>
+                </button>
                 {teams.map((team) => (
                   <button key={team.id} onClick={() => updateField('team', team.id)} className={`p-4 rounded-xl border transition-all ${formData.team === team.id ? 'border-[#FFD700] bg-[#FFD700]/10' : 'border-white/10 bg-white/[0.02] hover:border-white/20'}`}>
                     <div className="w-12 h-12 mx-auto mb-2"><img src={team.shield} alt={team.name} className="w-full h-full object-contain" /></div>
@@ -282,6 +418,15 @@ export default function CreatePage() {
                   </button>
                 ))}
               </div>
+              {formData.team === 'custom' && (
+                <div className="mt-4 space-y-3">
+                  <label className="text-white/60 text-sm block">Nombre del equipo</label>
+                  <input type="text" value={customTeamName} onChange={(e) => { setCustomTeamName(e.target.value); if (errors.customTeam) setErrors({ ...errors, customTeam: null }) }} placeholder="Ej: Club Atlético Liniers" className={`w-full px-4 py-3 rounded-xl bg-white/5 border ${errors.customTeam ? 'border-red-500/50' : 'border-white/10'} text-white placeholder-white/30 focus:border-[#FFD700]/50 focus:outline-none`} />
+                  {errors.customTeam && <p className="text-red-400 text-xs">{errors.customTeam}</p>}
+                  <p className="text-white/40 text-xs">En la vista previa vas a ver un escudo provisorio con el nombre. Después de pagar, nos mandás el logo por WhatsApp y te entregamos la invitación final con el escudo real.</p>
+                  <a href={whatsappLinks.customTeam(customTeamName || '[NOMBRE]', formData.childName, '')} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 text-[#25D366] text-sm font-semibold hover:underline">📱 Mandar nombre y logo por WhatsApp</a>
+                </div>
+              )}
             </motion.div>
           )}
 
@@ -290,7 +435,7 @@ export default function CreatePage() {
               <div className="text-center mb-8">
                 <span className="text-[10px] text-[#FFD700] tracking-[0.3em] uppercase">Figurita 1</span>
                 <h2 className="text-3xl font-black font-bebas tracking-wider mt-2">Los datos del crack</h2>
-                <p className="text-white/40 text-sm mt-2">Los datos del cumpleañero, sin importar la edad. ¡Todos pueden ser la estrella!</p>
+                <p className="text-white/40 text-sm mt-2">Los datos de tu hijo o hija, sin importar la edad. ¡Todos pueden ser la estrella!</p>
               </div>
               <div className="space-y-4">
                 <div>
@@ -340,6 +485,17 @@ export default function CreatePage() {
                     {errors.endTime && <p className="text-red-400 text-xs mt-1">{errors.endTime}</p>}
                   </div>
                 </div>
+                {formData.date && formData.startTime && (
+                  <div className="relative overflow-hidden rounded-2xl border border-[#FFD700]/25 bg-gradient-to-b from-[#0a0e27] to-[#101a3a] p-5">
+                    <SparkleField opacity={0.35} />
+                    <div className="relative">
+                      <p className="text-center text-[10px] tracking-[.24em] text-[#FFD700]/80 uppercase mb-3">
+                        Así lo verán tus invitados
+                      </p>
+                      <CountdownTimer date={formData.date} time={formData.startTime} compact />
+                    </div>
+                  </div>
+                )}
                 <div>
                   <label className="text-white/60 text-sm mb-2 block">Lugar</label>
                   <input type="text" value={formData.location} onChange={(e) => updateField('location', e.target.value)} placeholder="Club Atlético River Plate" className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-white/30 focus:border-[#FFD700]/50 focus:outline-none transition-colors" />
@@ -386,7 +542,7 @@ export default function CreatePage() {
                 <div className="flex items-center gap-3">
                   {previewUrl && <img src={previewUrl} alt="Preview" className="w-12 h-12 rounded-lg object-cover" />}
                   <div>
-                    <p className="text-white font-bold text-sm">{formData.childName || 'Tu hijo'}</p>
+                    <p className="text-white font-bold text-sm">{formData.childName || 'Tu hijo o hija'}</p>
                     <p className="text-white/40 text-xs">{formData.honoreeAge || '--'} años · {teams.find(t => t.id === formData.team)?.name || 'Argentina'}</p>
                     <p className="text-white/40 text-xs">{formData.startTime && formData.endTime ? `${formData.startTime} - ${formData.endTime}` : '--'}</p>
                   </div>
@@ -424,14 +580,20 @@ export default function CreatePage() {
                   <div><p className="text-white/40 text-[10px] uppercase tracking-wider">Lugar</p><p className="text-white text-sm">{formData.location || formData.address || '--'}</p></div>
                 </div>
               </motion.div>
-              <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.8 }} className="pt-4">
+              <div className="relative overflow-hidden rounded-2xl border border-[#FFD700]/25 bg-gradient-to-b from-[#0a0e27] to-[#101a3a] p-5">
+                <SparkleField opacity={0.35} />
+                <div className="relative">
+                  <CountdownTimer date={formData.date} time={formData.startTime} compact />
+                </div>
+              </div>
+              <div className="pt-4">
                 <button onClick={() => setShowPaymentModal(true)} className="w-full py-4 rounded-xl bg-gradient-to-r from-[#FFD700] to-[#FFA500] text-[#0a0e27] font-bold text-lg tracking-wide hover:opacity-90 transition-all shadow-lg shadow-[#FFD700]/20">
                   Pagar y recibir mi invitación · ARS $10.000
                 </button>
                 <p className="text-center text-white/30 text-xs mt-3">
                   Una vez que pagues, envianos el comprobante por WhatsApp y te enviamos el link definitivo en minutos.
                 </p>
-              </motion.div>
+              </div>
             </motion.div>
           )}
 
@@ -478,53 +640,135 @@ export default function CreatePage() {
                 </a>
 
                 {paymentStatus !== 'paid' && (
-                  <div className="rounded-xl border border-white/10 bg-white/[0.03] p-5">
-                    <p className="text-xs font-semibold text-white/70 uppercase tracking-widest">¿Ya realizaste el pago?</p>
-                    <p className="text-white/35 text-xs mt-2">
-                      Ingresá el número de operación de Mercado Pago para verificarlo. Código de pedido:{' '}
-                      <span className="text-[#FFD700]">{createdInvitation?.slug}</span>
-                    </p>
-                    <div className="mt-4 flex flex-col gap-2 sm:flex-row">
-                      <input
-                        type="text"
-                        inputMode="numeric"
-                        value={paymentId}
-                        onChange={(e) => setPaymentId(e.target.value.replace(/[^0-9]/g, ''))}
-                        placeholder="Nº de operación"
-                        className="flex-1 rounded-lg bg-black/40 border border-white/15 px-4 py-3 text-sm text-white outline-none focus:border-[#FFD700]/60"
-                      />
-                      <button
-                        onClick={verifyPayment}
-                        disabled={paymentStatus === 'checking'}
-                        className="rounded-lg bg-[#FFD700] px-5 py-3 text-sm font-bold text-[#1a1a3e] disabled:opacity-50"
-                      >
-                        {paymentStatus === 'checking' ? 'Verificando…' : 'Verificar pago'}
-                      </button>
+                  <div className="rounded-xl border border-white/10 bg-white/[0.03] p-5 space-y-4">
+                    <div>
+                      <p className="text-xs font-semibold text-white/70 uppercase tracking-widest">Verificación automática</p>
+                      <p className="text-white/50 text-xs mt-2 leading-relaxed">
+                        Cuando pagás en Mercado Pago, volvés a esta pantalla y <b className="text-white/80">verificamos solos</b> cada pocos segundos. No tenés que escribir ningún número.
+                        Código de pedido: <span className="text-[#FFD700]">{createdInvitation?.slug}</span>
+                      </p>
+                      {paymentMessage && (
+                        <p className="mt-3 text-xs text-[#FFD700]/90 leading-relaxed" role="status">{paymentMessage}</p>
+                      )}
+                      <div className="mt-4 flex gap-2">
+                        <button
+                          onClick={async () => {
+                            const code = createdInvitation?.slug
+                            if (!code) return
+                            setPaymentStatus('checking')
+                            try {
+                              const res = await fetch('/api/payment', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'status', code }) })
+                              const data = await res.json().catch(() => ({}))
+                              if (data.status === 'paid') { setPaymentStatus('paid'); setPaymentMessage('Pago acreditado. Tu invitación quedó activada.') }
+                              else { setPaymentStatus('pending'); setPaymentMessage('Todavía no figura como pagado. Si recién pagaste, esperá 1-2 minutos y tocá de nuevo. La verificación es automática.') }
+                            } catch { setPaymentStatus('pending'); setPaymentMessage('No pudimos consultar el estado. Intentá de nuevo en unos segundos.') }
+                          }}
+                          disabled={paymentStatus === 'checking'}
+                          className="flex-1 rounded-lg bg-[#FFD700] px-4 py-3 text-sm font-bold text-[#1a1a3e] disabled:opacity-50"
+                        >
+                          {paymentStatus === 'checking' ? 'Verificando…' : 'Ya pagué, verificar'}
+                        </button>
+                        <button onClick={openPayment} className="rounded-lg border border-white/20 px-4 py-3 text-sm font-semibold text-white/80 hover:bg-white/5">
+                          Reabrir Mercado Pago
+                        </button>
+                      </div>
                     </div>
-                    {paymentMessage && (
-                      <p className="mt-3 text-xs text-[#FFD700]/80" role="status">{paymentMessage}</p>
-                    )}
+
+                    <div className="border-t border-white/10 pt-4">
+                      <button onClick={() => setShowManualVerify(v => !v)} className="text-xs text-white/50 underline underline-offset-4 hover:text-white/80">
+                        {showManualVerify ? 'Ocultar verificación manual' : '¿Problemas? Verificación manual con número de operación'}
+                      </button>
+                      {showManualVerify && (
+                        <div className="mt-3 space-y-2">
+                          <div className="flex flex-col gap-2 sm:flex-row">
+                            <input type="text" inputMode="numeric" value={paymentId} onChange={(e) => setPaymentId(e.target.value.replace(/[^0-9]/g, ''))} placeholder="Nº de operación (solo números)" className="flex-1 rounded-lg bg-black/40 border border-white/15 px-4 py-3 text-sm text-white outline-none focus:border-[#FFD700]/60" />
+                            <button onClick={verifyPayment} disabled={paymentStatus === 'checking'} className="rounded-lg bg-white/10 border border-white/20 px-5 py-3 text-sm font-bold text-white disabled:opacity-50">
+                              {paymentStatus === 'checking' ? 'Verificando…' : 'Verificar'}
+                            </button>
+                          </div>
+                          <p className="text-white/30 text-[11px]">Solo si la verificación automática no funciona. El número está en el comprobante de Mercado Pago.</p>
+                        </div>
+                      )}
+                    </div>
+
                     <a
-                      href={whatsappLinks.payment(`Pago realizado, número de operación: ${paymentId || 'ver comprobante'}. Código: ${createdInvitation?.slug}`, createdInvitation?.slug)}
+                      href={whatsappLinks.paymentProof(createdInvitation?.slug, paymentId)}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="mt-4 inline-block text-xs text-white/45 underline decoration-white/20 underline-offset-4 hover:text-white/80"
+                      className="flex w-full items-center justify-center gap-2 rounded-lg bg-[#25D366]/15 border border-[#25D366]/30 px-4 py-3 text-sm font-semibold text-[#25D366] hover:bg-[#25D366]/25 transition-colors"
                     >
-                      No tengo el número: enviar comprobante por WhatsApp
+                      💬 No tengo el número: enviar comprobante por WhatsApp
                     </a>
                   </div>
                 )}
+
+                {paymentStatus === 'paid' && createdInvitation?.slug && (
+                  <div className="rounded-xl border border-green-500/30 bg-green-500/10 p-5 space-y-3">
+                    <p className="text-green-300 font-bold text-sm">✅ Pago acreditado</p>
+                    <p className="text-green-200/70 text-xs leading-relaxed">Tu invitación ya está activa. Compartila con el link y mirá quién confirma en tu panel.</p>
+                    <div className="flex flex-col gap-2">
+                      <button onClick={() => navigate(`/invitacion/${createdInvitation.slug}`)} className="w-full rounded-lg bg-[#FFD700] px-4 py-3 text-sm font-bold text-[#1a1a3e]">Ver mi invitación</button>
+                      <button onClick={() => navigate(`/panel/${createdInvitation.slug}`)} className="w-full rounded-lg border border-white/20 px-4 py-3 text-sm font-semibold text-white hover:bg-white/5">Ver panel de asistentes</button>
+                      <button onClick={() => { const url = `${window.location.origin}/invitacion/${createdInvitation.slug}`; navigator.clipboard.writeText(url); alert('Link copiado: ' + url) }} className="w-full rounded-lg bg-white/5 border border-white/10 px-4 py-3 text-sm font-semibold text-white/80">Copiar link para compartir</button>
+                    </div>
+                  </div>
+                )}
+
+                {createdInvitation?.slug && (
+                  <div className="rounded-xl border border-white/10 bg-white/[0.03] p-5 space-y-3 text-left">
+                    <div>
+                      <p className="text-[10px] font-bold uppercase tracking-widest text-white/50">Panel del organizador · acceso privado</p>
+                      <p className="mt-2 text-white/40 text-xs leading-relaxed">
+                        Con este código entrás a ver <b className="text-white/80">asistentes</b>, <b className="text-white/80">no asistentes</b> y total de personas.
+                        Guardalo, es solo tuyo:
+                      </p>
+                    </div>
+                    <div className="flex items-center justify-between gap-3 rounded-lg bg-black/40 px-4 py-3">
+                      <span className="font-mono text-sm tracking-widest text-[#FFD700]">
+                        {panelKey || localStorage.getItem(`invitafigus_panel_${createdInvitation.slug}`) || '· · ·'}
+                      </span>
+                      <button
+                        onClick={() => {
+                          const k = panelKey || localStorage.getItem(`invitafigus_panel_${createdInvitation.slug}`)
+                          if (k) { navigator.clipboard.writeText(k); alert('Clave copiada') }
+                        }}
+                        className="text-[11px] font-semibold text-white/60 underline underline-offset-4 hover:text-white"
+                      >
+                        Copiar clave
+                      </button>
+                    </div>
+                    <button onClick={() => navigate(`/panel/${createdInvitation.slug}`)} className="w-full rounded-lg bg-white/5 border border-white/10 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10">
+                      Abrir panel del organizador
+                    </button>
+                    <p className="text-white/25 text-[11px]">
+                      Link del panel: /panel/{createdInvitation.slug}
+                    </p>
+                  </div>
+                )}
+
+                <div className={`rounded-xl border p-4 text-xs leading-relaxed ${
+                  saveStatus === 'saved' ? 'border-green-500/25 bg-green-500/[0.07] text-green-200/80'
+                  : saveStatus === 'saving' ? 'border-white/10 bg-white/[0.03] text-white/50'
+                  : 'border-[#FFD700]/25 bg-[#FFD700]/[0.06] text-[#FFD700]/85'
+                }`}>
+                  {saveStatus === 'saved' && '✅ Pedido guardado en tu nombre. El operador ya lo ve en la planilla con estado PENDIENTE.'}
+                  {saveStatus === 'saving' && 'Guardando tu pedido…'}
+                  {saveStatus === 'pending' && '⚠ No pudimos guardarlo automáticamente. Mandá la foto por WhatsApp con tu código de pedido y lo cargamos a mano en segundos.'}
+                  {saveStatus === 'idle' && 'Tu pedido se guarda al tocar “Pagar y activar ahora”.'}
+                </div>
 
                 <p className="text-white/30 text-xs text-center">
                   Te respondemos en minutos con el link definitivo de tu invitación.
                 </p>
               </div>
 
-              <div className="pt-6 border-t border-white/10">
-                <p className="text-white/20 text-xs">
-                  ¿Ya enviaste la foto?{' '}
-                  <button onClick={() => navigate('/')} className="text-[#FFD700] hover:underline">Volver al inicio</button>
-                </p>
+              <div className="pt-6 border-t border-white/10 space-y-3">
+                <p className="text-white/40 text-xs">¿Ya enviaste la foto?</p>
+                <div className="flex flex-col gap-2">
+                  {createdInvitation?.slug && <button onClick={() => navigate(`/invitacion/${createdInvitation.slug}`)} className="w-full py-3 rounded-xl bg-white/5 border border-white/10 text-sm font-semibold text-white hover:bg-white/10">Ver mi invitación</button>}
+                  {createdInvitation?.slug && <button onClick={() => navigate(`/panel/${createdInvitation.slug}`)} className="w-full py-3 rounded-xl bg-white/5 border border-white/10 text-sm font-semibold text-white hover:bg-white/10">Ver panel de asistentes</button>}
+                  <button onClick={() => navigate('/')} className="w-full py-3 text-white/40 text-sm hover:text-white/70">Volver al inicio</button>
+                </div>
               </div>
 
               <AlmaCrossSellCard />

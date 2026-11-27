@@ -50,3 +50,10 @@ export function teamIdFromName(name = '') {
     .replace(/^-|-$/g, '')
   return getTeamById(normalized)?.id || normalized || 'argentina'
 }
+
+// Si el equipo viene por nombre y no está en la lista, devolvemos el nombre original
+// para poder mostrar un escudo provisorio con iniciales (equipos a medida).
+export function customTeamNameFrom(name = '') {
+  const id = teamIdFromName(name)
+  return getTeamById(id) ? '' : String(name || '').trim()
+}

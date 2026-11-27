@@ -4,6 +4,7 @@ import HomePage from './pages/HomePage'
 import InvitationPage from './pages/InvitationPage'
 import CreatePage from './pages/CreatePage'
 import AdminPage from './pages/AdminPage'
+import OrganizerPanelPage from './pages/OrganizerPanelPage'
 // La ruta /poc-foto (prueba de subida a Drive) se quitó de producción por seguridad.
 
 function App() {
@@ -13,6 +14,7 @@ function App() {
         <Route path="/" element={<HomePage />} />
         <Route path="/invitacion/:slug" element={<InvitationPage />} />
         <Route path="/crear" element={<CreatePage />} />
+        <Route path="/panel/:slug" element={<OrganizerPanelPage />} />
         <Route path="/admin" element={<AdminPage />} />
       </Routes>
     </AppProvider>

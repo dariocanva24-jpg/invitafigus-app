@@ -3,8 +3,9 @@ import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { ArrowRight, Sparkles, Camera, Share2, Star, ChevronDown, MessageCircle, Clock, Shield, Zap, Heart, Trophy, X, Check } from 'lucide-react'
 import { teams } from '../data/teams'
-import { whatsappLinks } from '../config/whatsapp'
+import { whatsappLinks, chatUrl } from '../config/whatsapp'
 import AlmaIsotipo from '../components/brand/AlmaIsotipo.jsx'
+import SparkleField from '../components/brand/SparkleField.jsx'
 
 // Número de WhatsApp - CAMBIAR POR TU NÚMERO REAL
 
@@ -184,7 +185,8 @@ function ExampleCard({ data, onClick }) {
 
   return (
     <div className="w-full max-w-[260px] mx-auto cursor-pointer" onClick={onClick}>
-      <div className="rounded-2xl overflow-hidden border border-[#FFD700]/30 bg-gradient-to-b from-[#0a0e27] to-[#1a1f4b] shadow-xl shadow-black/40 hover:shadow-2xl hover:shadow-[#FFD700]/10 transition-all duration-300 hover:-translate-y-1">
+      <div className="relative rounded-2xl overflow-hidden border border-[#FFD700]/30 bg-gradient-to-b from-[#0a0e27] to-[#1a1f4b] shadow-xl shadow-black/40 hover:shadow-2xl hover:shadow-[#FFD700]/10 transition-all duration-300 hover:-translate-y-1">
+          <SparkleField opacity={0.5} />
         <div className="flex items-center justify-between p-3">
           <span className="text-[8px] text-white/40 font-bold tracking-wider">FIFA 2026</span>
           <div className={`w-10 h-10 rounded-full bg-gradient-to-br ${ratingColor} flex items-center justify-center border border-white/20 shadow-lg`}>
@@ -240,6 +242,7 @@ export default function HomePage() {
       <section className="relative min-h-screen flex flex-col items-center justify-center px-4 pt-20 pb-12">
         <div className="absolute inset-0 bg-gradient-to-b from-[#0a0a1a] via-[#0f0f23] to-[#0a0a1a]" />
         <div className="absolute top-1/3 left-1/2 -translate-x-1/2 w-[500px] h-[500px] bg-[#FFD700] rounded-full opacity-[0.03] blur-3xl" />
+        <SparkleField opacity={0.7} />
 
         <div className="relative z-10 text-center max-w-4xl mx-auto">
           <motion.div
@@ -248,7 +251,7 @@ export default function HomePage() {
             transition={{ duration: 0.6 }}
             className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white/5 border border-white/10 mb-8"
           >
-            <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
+            <span className="w-2 h-2 rounded-full bg-green-400" />
             <span className="text-xs font-semibold text-white/60 tracking-wider uppercase">Usado por +500 familias en Argentina</span>
           </motion.div>
 
@@ -259,7 +262,7 @@ export default function HomePage() {
             className="text-5xl md:text-7xl lg:text-[5.5rem] font-bebas tracking-wider leading-[0.9] mb-6"
           >
             <span className="text-white">
-              Convertí a tu hijo en
+              Convertí a tu hijo o hija en
             </span>
             <br />
             <span className="bg-gradient-to-r from-[#FFD700] via-[#FFA500] to-[#FF6B35] bg-clip-text text-transparent">
@@ -308,13 +311,9 @@ export default function HomePage() {
           </motion.div>
         </div>
 
-        <motion.div
-          animate={{ y: [0, 10, 0] }}
-          transition={{ duration: 2, repeat: Infinity }}
-          className="absolute bottom-8 left-1/2 -translate-x-1/2"
-        >
+        <div className="absolute bottom-8 left-1/2 -translate-x-1/2">
           <ChevronDown size={24} className="text-white/20" />
-        </motion.div>
+        </div>
       </section>
 
       {/* SECCIÓN 2 — EQUIPOS */}
@@ -426,6 +425,40 @@ export default function HomePage() {
                 />
               </motion.div>
             ))}
+          </div>
+
+          <div className="mt-10 max-w-3xl mx-auto rounded-2xl border border-[#FFD700]/30 bg-gradient-to-b from-white/[0.05] to-transparent p-7 text-center">
+            <svg className="mx-auto mb-4" width="42" height="42" viewBox="0 0 42 42" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+              <path d="M21 3 35 8v11c0 9-5.6 15.5-14 19C12.6 34.5 7 28 7 19V8L21 3Z" stroke="#FFD700" strokeWidth="1.2" strokeLinejoin="round" />
+              <path d="M21 13v10M16 18h10" stroke="#FFD700" strokeWidth="1.2" strokeLinecap="round" />
+            </svg>
+            <p className="text-[10px] tracking-[.28em] text-[#FFD700]/80 uppercase mb-2">Equipos a medida</p>
+            <h3 className="font-bebas text-2xl tracking-wider mb-2">¿No está tu equipo?</h3>
+            <p className="text-white/50 text-sm leading-relaxed max-w-xl mx-auto">
+              Pasame el nombre y el escudo o logo por WhatsApp y lo preparamos para tu figurita.
+              Club, liga barrial o equipo de la escuela: todos juegan.
+            </p>
+            <div className="mt-4 grid gap-2 sm:grid-cols-3 text-left">
+              {[
+                ['1', 'Elegís “Equipo personalizado”', 'Escribís el nombre del club y seguís normal.'],
+                ['2', 'Ves la vista previa', 'Aparece un escudo provisorio con las iniciales del club.'],
+                ['3', 'Nos mandás el logo', 'Después del pago te llega la invitación final con tu escudo real.'],
+              ].map(([n, t1, t2]) => (
+                <div key={n} className="rounded-xl border border-white/10 bg-black/20 p-3">
+                  <span className="grid h-6 w-6 place-items-center rounded-full bg-[#FFD700] text-[11px] font-black text-[#0a0e27]">{n}</span>
+                  <p className="mt-2 text-xs font-bold text-white/85">{t1}</p>
+                  <p className="mt-1 text-[11px] leading-relaxed text-white/40">{t2}</p>
+                </div>
+              ))}
+            </div>
+            <a
+              href={chatUrl({ intent: 'consulta', detail: 'Quiero un equipo personalizado. Nombre del equipo: [NOMBRE]. Adjunto el escudo o logo por aquí.' })}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-5 inline-flex items-center gap-2 rounded-full border border-[#FFD700]/50 px-6 py-2.5 text-sm font-semibold text-[#FFD700] hover:bg-[#FFD700]/10 transition-colors"
+            >
+              Pedir equipo personalizado <ArrowRight size={16} />
+            </a>
           </div>
 
           <div className="text-center mt-12">
@@ -541,7 +574,7 @@ export default function HomePage() {
             <span className="text-[#FFD700]">INVITACIÓN INOLVIDABLE?</span>
           </h2>
           <p className="text-white/40 mb-10">
-            Tu hijo merece una invitación tan especial como él.
+            Tu hijo o hija merece una invitación tan especial como vos.
           </p>
 
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
@@ -577,7 +610,7 @@ export default function HomePage() {
             <span className="text-white/20 text-xs">2026</span>
           </div>
           <p className="text-white/20 text-xs">
-            Invitaciones digitales futboleras para cumpleañeros de todas las edades
+            Invitaciones digitales futboleras para hijos, hijas y cumpleañeros de todas las edades
           </p>
         </div>
         <div className="mt-7 flex max-w-5xl mx-auto items-center justify-center gap-2.5 border-t border-white/5 pt-5 md:justify-start">

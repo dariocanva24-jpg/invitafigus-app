@@ -38,8 +38,35 @@ function getRarityClass(overall) {
   return { label: 'BRONZE', color: '#CD7F32', bg: 'linear-gradient(135deg, #CD7F32, #B87333)', shadow: '0 0 15px rgba(205,127,50,0.4)' }
 }
 
+// Escudo provisorio para equipos a medida (sin logo todavía).
+// Se muestra elegante, con el nombre del club, hasta que enviemos el logo real.
+function customShield(name, initials) {
+  const safeName = String(name || 'Mi Equipo').replace(/[<>&"]/g, '')
+  const short = (initials || safeName).slice(0, 3).toUpperCase()
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 120">
+    <defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#1a1f4b"/><stop offset="50%" stop-color="#FFD700"/><stop offset="100%" stop-color="#FF6B35"/>
+    </linearGradient></defs>
+    <path d="M50 4 L94 18 V62 C94 88 74 106 50 116 C26 106 6 88 6 62 V18 Z" fill="url(#g)" stroke="#FFD700" stroke-width="3"/>
+    <circle cx="50" cy="52" r="24" fill="#0a0e27" opacity="0.55"/>
+    <text x="50" y="60" text-anchor="middle" font-family="Arial Black, Arial" font-size="20" font-weight="900" fill="#FFD700">${short}</text>
+    <text x="50" y="96" text-anchor="middle" font-family="Arial" font-size="9" font-weight="700" fill="#0a0e27">${safeName.slice(0, 14)}</text>
+  </svg>`
+  return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`
+}
+
 export default function PlayerCard({ event }) {
-  const team = getTeamById(event?.team) || getTeamById('argentina')
+  const isCustomTeam = event?.team === 'custom' || !getTeamById(event?.team)
+  const baseTeam = getTeamById(event?.team) || getTeamById('argentina')
+  const team = isCustomTeam
+    ? {
+        ...baseTeam,
+        id: 'custom',
+        name: event?.customTeamName || 'Mi Equipo',
+        shield: customShield(event?.customTeamName, (event?.customTeamName || 'ME').split(' ').filter(Boolean).map(w => w[0]).join('').slice(0, 3)),
+        colors: { primary: '#0a0e27', secondary: '#FFD700', text: '#ffffff' },
+      }
+    : baseTeam
   
   // Usamos el nombre completo para generar stats
   const fullNameForStats = `${event?.childName || ''} ${event?.honoreeName || ''}`.trim() || 'Jugador'

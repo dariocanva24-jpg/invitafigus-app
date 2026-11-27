@@ -2,11 +2,13 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { useState, useEffect } from 'react'
 import { getTeamById } from '../../data/teams'
 
-export default function AlbumCover({ honoreeName, team, onOpen }) {
+export default function AlbumCover({ honoreeName, team, customTeamName, onOpen }) {
   const [phase, setPhase] = useState('idle') // idle → touching → tearing → revealing → done
   const [tearProgress, setTearProgress] = useState(0)
   const [isExiting, setIsExiting] = useState(false)
-  const teamData = getTeamById(team) || getTeamById('argentina')
+  const knownTeam = getTeamById(team)
+  const teamData = knownTeam || getTeamById('argentina')
+  const initials = (customTeamName || '').split(' ').filter(Boolean).map((w) => w[0]).join('').slice(0, 3).toUpperCase()
 
   const handleTouch = () => {
     if (phase !== 'idle') return
@@ -93,8 +95,7 @@ export default function AlbumCover({ honoreeName, team, onOpen }) {
               <motion.div
                 key="envelope"
                 initial={{ opacity: 1, scale: 1 }}
-                animate={{ y: [0, -4, 0] }}
-                transition={{ y: { duration: 3, repeat: Infinity, ease: "easeInOut" } }}
+                animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.95, transition: { duration: 0.3 } }}
                 className="absolute inset-0 cursor-pointer group"
                 onClick={handleTouch}
@@ -165,17 +166,18 @@ export default function AlbumCover({ honoreeName, team, onOpen }) {
                       </div>
 
                       {/* Trofeo dorado emoji */}
-                      <motion.div
-                        animate={{ rotate: [-5, 5, -5] }}
-                        transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
-                        className="text-4xl my-2"
-                      >
-                        🏆
-                      </motion.div>
+                      <div className="text-4xl my-2">🏆</div>
 
-                      <p className="text-white/80 text-xs font-black tracking-[0.2em] uppercase">
-                        FIFA
-                      </p>
+                      {customTeamName ? (
+                        <>
+                          <p className="mx-auto max-w-[190px] break-words text-[10px] font-black uppercase leading-tight tracking-[0.14em] text-white/80">
+                            {customTeamName}
+                          </p>
+                          <p className="mt-1 text-[9px] font-bold tracking-[0.24em] text-[#FFD700]/80">{initials || '★'} · ESCUDO A MEDIDA</p>
+                        </>
+                      ) : (
+                        <p className="text-white/80 text-xs font-black tracking-[0.2em] uppercase">FIFA</p>
+                      )}
                     </div>
 
                     {/* Bottom - DELUXE PACK + PANINI */}
@@ -205,18 +207,14 @@ export default function AlbumCover({ honoreeName, team, onOpen }) {
                 </div>
 
                 {/* Indicador de toque - CENTRADO Y ELEGANTE */}
-                <motion.div
-                  className="absolute -bottom-16 left-1/2 -translate-x-1/2 flex flex-col items-center"
-                  animate={{ y: [0, 6, 0] }}
-                  transition={{ duration: 2, repeat: Infinity }}
-                >
+                <div className="absolute -bottom-16 left-1/2 -translate-x-1/2 flex flex-col items-center">
                   <div className="w-12 h-12 rounded-full bg-white/5 border border-white/20 flex items-center justify-center mb-2 group-hover:bg-white/10 group-hover:border-white/30 transition-all">
                     <svg width="18" height="18" viewBox="0 0 16 16" fill="none" className="text-white/50 group-hover:text-white/70">
                       <path d="M8 3v10M3 8l5 5 5-5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
                     </svg>
                   </div>
                   <span className="text-white/40 text-[10px] tracking-[0.3em] uppercase font-medium">Tocá para abrir</span>
-                </motion.div>
+                </div>
               </motion.div>
             )}
 
@@ -322,11 +320,7 @@ export default function AlbumCover({ honoreeName, team, onOpen }) {
                 >
                   <div className="w-44 h-60 rounded-xl bg-gradient-to-br from-[#FFD700]/20 to-[#FFA500]/10 border-2 border-[#FFD700]/50 flex items-center justify-center"
                     style={{ boxShadow: '0 0 60px rgba(255,215,0,0.3)' }}>
-                    <motion.div
-                      animate={{ rotate: 360 }}
-                      transition={{ duration: 1.5, repeat: Infinity, ease: "linear" }}
-                      className="w-10 h-10 rounded-full border-2 border-[#FFD700]/50 border-t-[#FFD700]"
-                    />
+                    <div className="w-10 h-10 rounded-full border-2 border-[#FFD700]/50 border-t-[#FFD700]" />
                   </div>
                 </motion.div>
 

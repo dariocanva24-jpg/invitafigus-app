@@ -16,9 +16,22 @@ export function chatUrl({ intent, detail = '', phone = OPERATOR_NUMBER }) {
 export const whatsappLinks = {
   support: () => chatUrl({ intent: 'consulta', detail: 'Hola, necesito ayuda con una invitación.' }),
 
+  // Pago: mensaje claro para el operador. name = nombre del homenajeado, slug = código de pedido
   payment: (name, slug) => chatUrl({
     intent: 'pago',
-    detail: `Ya pagué la invitación de ${name || '?'}. Código: ${slug || '?'}. Envío la foto por aquí.`,
+    detail: `Hola, ya pagué la invitación de ${name || 'mi hijo o hija'}. Código: ${slug || 'sin código'}. Te envío la foto por aquí.`,
+  }),
+
+  // Comprobante cuando no tiene el número de operación
+  paymentProof: (slug, paymentId) => chatUrl({
+    intent: 'pago',
+    detail: `Hola, pagué la invitación. Código: ${slug || 'sin código'}.${paymentId ? ` Nº de operación: ${paymentId}.` : ' No tengo el número de operación, te envío el comprobante.'} Te envío la foto por aquí.`,
+  }),
+
+  // Equipo personalizado: el usuario manda nombre + logo
+  customTeam: (teamName, childName, slug) => chatUrl({
+    intent: 'consulta',
+    detail: `Quiero un equipo personalizado. Nombre del equipo: ${teamName || '[NOMBRE]'}. Homenajeado: ${childName || '?'}. Código: ${slug || 'sin código'}. Te envío el escudo o logo por aquí.`,
   }),
 
   rsvp: ({ name, slug, guests, status, phone }) => chatUrl({

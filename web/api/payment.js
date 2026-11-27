@@ -27,6 +27,22 @@ export default async function handler(req, res) {
       })
       return sendJson(res, 201, data)
     }
+    if (action === 'create') {
+      const code = String(body.code || '')
+      const baseUrl = String(body.baseUrl || '')
+      if (!/^[a-z0-9-]{3,120}$/i.test(code)) return sendJson(res, 400, { error: 'Código inválido' })
+      try {
+        const data = await callApi('/api/payments/create', {
+          method: 'POST',
+          body: JSON.stringify({ code, amount: 10000, baseUrl: baseUrl || undefined }),
+        })
+        return sendJson(res, 201, data)
+      } catch (error) {
+        // Sin token de MP configurado: el frontend usa el link de pago estático.
+        console.error('payment create:', error.message)
+        return sendJson(res, 200, { status: 'unconfigured' })
+      }
+    }
     if (action === 'verify') {
       const code = String(body.code || '')
       const paymentId = String(body.paymentId || '')

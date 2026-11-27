@@ -16,6 +16,15 @@ export default function AdminPage() {
   const [editingRowIndex, setEditingRowIndex] = useState(null)
   const [editForm, setEditForm] = useState({})
   const [rsvpCounts, setRsvpCounts] = useState({})
+  const [config, setConfig] = useState(null)
+
+  // Diagnóstico: si falta alguna variable en Vercel lo avisamos antes de entrar.
+  useEffect(() => {
+    fetch('/api/admin-login')
+      .then((r) => r.json())
+      .then((data) => setConfig(data))
+      .catch(() => setConfig({ ready: false, missing: ['conexión con el servidor'] }))
+  }, [])
 
   useEffect(() => {
     if (!invitations.length) return
@@ -153,6 +162,19 @@ export default function AdminPage() {
               placeholder="Contraseña"
               className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-white/30 focus:border-[#FFD700]/50 focus:outline-none transition-colors"
             />
+            {config && config.ready === false && config.missing?.length > 0 && (
+              <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-left">
+                <p className="text-amber-300 text-[11px] font-bold uppercase tracking-widest">Falta configurar en Vercel</p>
+                <ul className="mt-2 space-y-1">
+                  {config.missing.map((item) => (
+                    <li key={item} className="text-amber-100/80 text-xs font-mono">· {item}</li>
+                  ))}
+                </ul>
+                <p className="mt-2 text-amber-100/50 text-[11px] leading-relaxed">
+                  Vercel → proyecto web → Settings → Environment Variables. Después tocá Redeploy.
+                </p>
+              </div>
+            )}
             {error && <p className="text-red-400 text-sm text-center">{error}</p>}
             <button
               type="submit"

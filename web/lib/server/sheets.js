@@ -1,5 +1,5 @@
 const READ_ACTIONS = new Set(['getAll', 'getBySlug'])
-const WRITE_ACTIONS = new Set(['updateStatus', 'deleteRow', 'updateField', 'incrementViews'])
+const WRITE_ACTIONS = new Set(['updateStatus', 'deleteRow', 'updateField', 'incrementViews', 'createInvitation'])
 
 function scriptUrl() {
   if (!process.env.APPS_SCRIPT_URL) {

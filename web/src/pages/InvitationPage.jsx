@@ -4,14 +4,23 @@ import { motion, AnimatePresence } from "framer-motion";
 import { ArrowLeft, Volume2, VolumeX } from "lucide-react";
 import { useApp } from "../context/AppContext";
 import { fetchInvitationBySlug, incrementViewsRemote } from "../services/googleSheetsApi";
-import { teamIdFromName } from "../data/teams";
+import { teamIdFromName, customTeamNameFrom } from "../data/teams";
 import AlbumCover from "../components/invitation/AlbumCover";
 import PlayerCard from "../components/invitation/PlayerCard";
 import EventInfo from "../components/invitation/EventInfo";
 import CountdownTimer from "../components/invitation/CountdownTimer";
+import SparkleField from "../components/brand/SparkleField.jsx";
 import RSVPForm from "../components/invitation/RSVPForm";
 import ShareButtons from "../components/invitation/ShareButtons";
 
+
+// La demo siempre queda en una fecha futura para que el contador se vea completo.
+function withDemoDate(invitation, slug) {
+  if (!invitation || slug !== 'thiago-8-argentina') return invitation
+  const now = new Date()
+  const year = now.getMonth() >= 6 ? now.getFullYear() + 1 : now.getFullYear()
+  return { ...invitation, date: `${year}-07-14`, time: '15:00 - 19:00' }
+}
 
 const InvitationPage = () => {
   const { slug } = useParams();
@@ -60,6 +69,7 @@ const InvitationPage = () => {
             age: remoteEvent.edad,
             honoreeAge: remoteEvent.edad,
             team: teamIdFromName(remoteEvent.equipo || 'Argentina'),
+            customTeamName: customTeamNameFrom(remoteEvent.equipo || ''),
             date: remoteEvent.fecha,
             time: remoteEvent.hora,
             address: remoteEvent.lugar,
@@ -72,17 +82,17 @@ const InvitationPage = () => {
             status: remoteEvent.estado?.toLowerCase(),
             views: remoteEvent.views,
           };
-          setEvent(mappedEvent);
+          setEvent(withDemoDate(mappedEvent, slug));
           
           incrementViewsRemote(slug).catch(() => {});
         } else {
           const localEvent = getEventBySlug(slug);
-          setEvent(localEvent);
+          setEvent(withDemoDate(localEvent, slug));
         }
       } catch (err) {
         console.error('Error loading invitation:', err);
         const localEvent = getEventBySlug(slug);
-        setEvent(localEvent);
+        setEvent(withDemoDate(localEvent, slug));
         if (!localEvent) {
           setError('Invitación no encontrada');
         }
@@ -148,7 +158,7 @@ const InvitationPage = () => {
             ¡Creá tu invitación!
           </h2>
           <p className="text-gray-400 mb-6">
-            Esta invitación está en proceso o aún no fue creada. Convertí a tu hijo en la estrella del partido.
+            Esta invitación está en proceso o aún no fue creada. Convertí a tu hijo o hija en la estrella del partido.
           </p>
           <button
             onClick={() => navigate('/crear')}
@@ -203,8 +213,9 @@ const InvitationPage = () => {
               className="mb-6"
             >
               <AlbumCover 
-                honoreeName={event.honoreeName || event.childName} 
-                team={event.team} 
+                honoreeName={event.childName || event.honoreeName} 
+                team={event.team}
+                customTeamName={event.customTeamName}
                 onOpen={handleAlbumOpen}
               />
             </motion.div>
@@ -226,14 +237,12 @@ const InvitationPage = () => {
 
         <AnimatePresence>
           {showCard && (
-            <motion.div
-              initial={{ opacity: 0, y: 30 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.6, delay: 0.3 }}
-              className="mb-6"
-            >
-              <EventInfo event={event} />
-            </motion.div>
+            <div className="mb-6 relative overflow-hidden rounded-2xl border border-[#FFD700]/25 bg-gradient-to-b from-[#0a0e27] to-[#101a3a] p-5">
+              <SparkleField opacity={0.35} />
+              <div className="relative">
+                <CountdownTimer date={event.date} time={event.time} />
+              </div>
+            </div>
           )}
         </AnimatePresence>
 
@@ -242,10 +251,10 @@ const InvitationPage = () => {
             <motion.div
               initial={{ opacity: 0, y: 30 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.6, delay: 0.5 }}
+              transition={{ duration: 0.6, delay: 0.3 }}
               className="mb-6"
             >
-              <CountdownTimer date={event.date} time={event.time} />
+              <EventInfo event={event} />
             </motion.div>
           )}
         </AnimatePresence>

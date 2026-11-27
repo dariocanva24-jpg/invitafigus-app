@@ -4,7 +4,10 @@ import { motion } from 'framer-motion'
 export default function EventInfo({ event }) {
   const formatDate = (dateStr) => {
     if (!dateStr) return ''
-    const d = new Date(dateStr)
+    // Las fechas ISO sin hora se interpretan en UTC; las forzamos a medianoche local
+    // para que el día y el nombre del día coincidan con el contador.
+    const normalized = /^\d{4}-\d{2}-\d{2}$/.test(dateStr) ? `${dateStr}T12:00:00` : dateStr
+    const d = new Date(normalized)
     return d.toLocaleDateString('es-AR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
   }
 
@@ -87,7 +90,6 @@ export default function EventInfo({ event }) {
               style={{
                 background: 'linear-gradient(105deg, transparent 40%, rgba(255,255,255,0.03) 50%, transparent 60%)',
                 backgroundSize: '200% 200%',
-                animation: 'shine 4s ease-in-out infinite',
               }} />
             <div className="relative flex items-start gap-4">
               <div className="w-12 h-12 rounded-xl flex items-center justify-center shrink-0"

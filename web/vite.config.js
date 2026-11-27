@@ -7,18 +7,20 @@ import adminProxy from './api/admin-proxy.js'
 import invitations from './api/invitations.js'
 import rsvp from './api/rsvp.js'
 import payment from './api/payment.js'
+import panel from './api/panel.js'
 
 // Las variables de las funciones serverless se cargan aquí solo para desarrollo local.
 dotenv.config({ path: '.env.local' })
 dotenv.config()
 
 const routes = [
-  { path: '/admin-login', method: 'POST', handler: adminLogin },
+  { path: '/admin-login', methods: ['GET', 'POST'], handler: adminLogin },
   { path: '/admin-logout', method: 'POST', handler: adminLogout },
   { path: '/admin-proxy', methods: ['GET', 'POST'], handler: adminProxy },
   { path: '/invitations', methods: ['GET', 'POST'], handler: invitations },
   { path: '/rsvp', methods: ['GET', 'POST'], handler: rsvp },
   { path: '/payment', method: 'POST', handler: payment },
+  { path: '/panel', method: 'POST', handler: panel },
 ]
 
 function vercelApiDev() {
