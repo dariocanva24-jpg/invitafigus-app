@@ -1,5 +1,6 @@
 import { motion } from 'framer-motion'
 import { getTeamById } from '../../data/teams'
+import { useAllTeams } from '../../services/dynamicTeams'
 
 function generateStats(name, age) {
   let hash = 0
@@ -56,8 +57,10 @@ function customShield(name, initials) {
 }
 
 export default function PlayerCard({ event }) {
-  const isCustomTeam = event?.team === 'custom' || !getTeamById(event?.team)
-  const baseTeam = getTeamById(event?.team) || getTeamById('argentina')
+  const allTeams = useAllTeams()
+  const findTeam = (id) => getTeamById(id) || allTeams.find((team) => team.id === id) || null
+  const isCustomTeam = event?.team === 'custom' || !findTeam(event?.team)
+  const baseTeam = findTeam(event?.team) || getTeamById('argentina')
   const team = isCustomTeam
     ? {
         ...baseTeam,

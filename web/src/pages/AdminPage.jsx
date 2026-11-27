@@ -3,6 +3,20 @@ import { useNavigate } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
 import { fetchAllInvitations, activateInvitationRemote, deleteInvitationRemote, updateInvitationField } from '../services/googleSheetsApi'
 import { whatsappLinks } from '../config/whatsapp'
+import TeamManager from '../components/admin/TeamManager'
+
+
+// Una foto sirve solo si es una IMAGEN real. Las carpetas de Drive
+// (drive.google.com/drive/folders/...) no se pueden mostrar.
+const isRealPhoto = (url) => {
+  const value = String(url || '').trim()
+  if (!value) return false
+  if (/\.(jpg|jpeg|png|webp|gif|avif)(\?|$)/i.test(value)) return true
+  if (/drive\.google\.com\/.*[?&]id=/.test(value)) return true
+  if (/lh3\.googleusercontent\.com/.test(value)) return true
+  if (value.startsWith('data:image/')) return true
+  return false
+}
 
 export default function AdminPage() {
   const navigate = useNavigate()
@@ -17,6 +31,7 @@ export default function AdminPage() {
   const [editForm, setEditForm] = useState({})
   const [rsvpCounts, setRsvpCounts] = useState({})
   const [config, setConfig] = useState(null)
+  const [tab, setTab] = useState('pedidos')
   const [backupMsg, setBackupMsg] = useState('')
   const [showSheetGuide, setShowSheetGuide] = useState(false)
 
@@ -293,14 +308,32 @@ export default function AdminPage() {
           </div>
         </div>
 
-        {error && (
+        {error && tab === 'pedidos' && (
           <div className="mb-4 p-4 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 text-sm">
             {error}
           </div>
         )}
 
+        {/* Pestañas */}
+        <div className="mb-5 flex gap-2">
+          <button
+            onClick={() => setTab('pedidos')}
+            className={`rounded-xl px-4 py-2 text-sm font-bold transition ${tab === 'pedidos' ? 'bg-[#FFD700] text-[#0a0e27]' : 'bg-white/5 text-white/60 hover:bg-white/10'}`}
+          >
+            Pedidos
+          </button>
+          <button
+            onClick={() => setTab('equipos')}
+            className={`rounded-xl px-4 py-2 text-sm font-bold transition ${tab === 'equipos' ? 'bg-[#FFD700] text-[#0a0e27]' : 'bg-white/5 text-white/60 hover:bg-white/10'}`}
+          >
+            Equipos y escudos
+          </button>
+        </div>
+
+        {tab === 'equipos' && <TeamManager />}
+
         {/* Planilla no conectada: guía paso a paso para crearla en 5 minutos */}
-        {config?.missing?.includes('APPS_SCRIPT_URL') && (
+        {tab === 'pedidos' && config?.missing?.includes('APPS_SCRIPT_URL') && (
           <div className="mb-4 rounded-xl border border-amber-500/30 bg-amber-500/[0.07] p-4">
             <div className="flex items-start justify-between gap-3 flex-wrap">
               <div>
@@ -330,7 +363,7 @@ export default function AdminPage() {
         )}
 
         {/* Respaldo: siempre disponible, no depende de la planilla */}
-        <div className="mb-6 rounded-xl border border-white/10 bg-white/[0.03] p-4">
+        <div className={`mb-6 rounded-xl border border-white/10 bg-white/[0.03] p-4 ${tab === 'pedidos' ? '' : 'hidden'}`}>
           <div className="flex items-center justify-between gap-3 flex-wrap">
             <div>
               <p className="text-white/80 text-sm font-bold">Respaldo de pedidos</p>
@@ -349,7 +382,7 @@ export default function AdminPage() {
           {backupMsg && <p className="mt-3 text-xs text-[#FFD700]/85">{backupMsg}</p>}
         </div>
 
-        {loading ? (
+        {tab === 'pedidos' && (loading ? (
           <div className="text-center py-12">
             <div className="w-8 h-8 border-2 border-[#FFD700] border-t-transparent rounded-full animate-spin mx-auto mb-4" />
             <p className="text-white/40">Cargando invitaciones...</p>
@@ -371,7 +404,7 @@ export default function AdminPage() {
               >
                 <div className="flex items-start justify-between flex-wrap gap-3">
                   <div className="flex items-start gap-3 flex-1 min-w-[200px]">
-                    {inv.foto_url ? (
+                    {isRealPhoto(inv.foto_url) ? (
                       <img
                         src={inv.foto_url}
                         alt={inv.nombre}
@@ -422,12 +455,12 @@ export default function AdminPage() {
                             ✉️ {inv.email}
                           </span>
                         )}
-                        {!inv.foto_url && (
+                        {!isRealPhoto(inv.foto_url) && (
                           <span className="text-[10px] text-orange-400">
                             📷 Foto pendiente
                           </span>
                         )}
-                        {inv.foto_url && (
+                        {isRealPhoto(inv.foto_url) && (
                           <span className="text-[10px] text-green-400">
                             📷 Foto cargada
                           </span>
@@ -450,6 +483,18 @@ export default function AdminPage() {
                       className="px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-xs hover:bg-white/10 transition-colors"
                     >
                       Editar
+                    </button>
+                    <button
+                      onClick={() => {
+                        const url = window.prompt('Pegá el link DIRECTO de la imagen (debe ser una FOTO, no una carpeta).\nEjemplo: https://drive.google.com/uc?export=view&id=1AbC...')
+                        if (!url) return
+                        updateInvitationField(inv.rowIndex, 'foto_url', url.trim())
+                          .then(() => loadInvitations())
+                          .catch((err) => setError('No se pudo guardar la foto: ' + err.message))
+                      }}
+                      className="px-3 py-1.5 rounded-lg bg-[#FFD700]/15 border border-[#FFD700]/40 text-[#FFD700] text-xs hover:bg-[#FFD700]/25 transition-colors"
+                    >
+                      📷 Foto
                     </button>
                     <button
                       onClick={() => copyLink(inv.slug)}
@@ -476,7 +521,7 @@ export default function AdminPage() {
               </div>
             ))}
           </div>
-        )}
+        ))}
 
         {/* Modal de edición */}
         {editingSlug && (
@@ -548,7 +593,7 @@ export default function AdminPage() {
                     type="text"
                     value={editForm.foto_url || ''}
                     onChange={(e) => setEditForm({...editForm, foto_url: e.target.value})}
-                    placeholder="https://drive.google.com/uc?export=view&id=..."
+                    placeholder="https://drive.google.com/uc?export=view&id=1AbC..."
                     className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-sm focus:border-[#FFD700]/50 focus:outline-none"
                   />
                 </div>

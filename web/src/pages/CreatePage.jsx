@@ -6,7 +6,8 @@ import { useApp } from '../context/AppContext'
 import PlayerCard from '../components/invitation/PlayerCard'
 import Watermark from '../components/invitation/Watermark'
 import { sendToGoogleForm } from '../services/googleForm'
-import { teams } from '../data/teams'
+import { teams as baseTeams } from '../data/teams'
+import { useAllTeams } from '../services/dynamicTeams'
 import { whatsappLinks, chatUrl } from '../config/whatsapp'
 import AlmaCrossSellCard from '../components/crossSell/AlmaCrossSellCard.jsx'
 import CountdownTimer from '../components/invitation/CountdownTimer.jsx'
@@ -14,6 +15,7 @@ import SparkleField from '../components/brand/SparkleField.jsx'
 
 
 export default function CreatePage() {
+  const teams = useAllTeams()
   const navigate = useNavigate()
   const { createInvitation } = useApp()
   const [step, setStep] = useState(1)

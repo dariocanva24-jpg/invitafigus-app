@@ -1,5 +1,5 @@
-const READ_ACTIONS = new Set(['getAll', 'getBySlug', 'rsvpCount', 'getRSVPs', 'panelIssue', 'panelSummary'])
-const WRITE_ACTIONS = new Set(['updateStatus', 'deleteRow', 'updateField', 'incrementViews', 'createInvitation', 'addRSVP', 'issuePanelKey'])
+const READ_ACTIONS = new Set(['getAll', 'getBySlug', 'rsvpCount', 'getRSVPs', 'panelIssue', 'panelSummary', 'getTeams'])
+const WRITE_ACTIONS = new Set(['updateStatus', 'deleteRow', 'updateField', 'incrementViews', 'createInvitation', 'addRSVP', 'issuePanelKey', 'addTeam', 'removeTeam'])
 
 function scriptUrl() {
   if (!process.env.APPS_SCRIPT_URL) {

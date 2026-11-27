@@ -5,6 +5,17 @@ import { ArrowLeft, Volume2, VolumeX } from "lucide-react";
 import { useApp } from "../context/AppContext";
 import { fetchInvitationBySlug, incrementViewsRemote } from "../services/googleSheetsApi";
 import { teamIdFromName, customTeamNameFrom } from "../data/teams";
+
+// Las carpetas de Drive no son imágenes: si el link no es una foto, la ignoramos.
+const validPhoto = (url) => {
+  const value = String(url || '').trim();
+  if (!value) return "";
+  if (/\.(jpg|jpeg|png|webp|gif|avif)(\?|$)/i.test(value)) return value;
+  if (/drive\.google\.com\/.*[?&]id=/.test(value)) return value;
+  if (/lh3\.googleusercontent\.com/.test(value)) return value;
+  if (value.startsWith("data:image/")) return value;
+  return "";
+};
 import AlbumCover from "../components/invitation/AlbumCover";
 import PlayerCard from "../components/invitation/PlayerCard";
 import EventInfo from "../components/invitation/EventInfo";
@@ -83,7 +94,7 @@ const InvitationPage = () => {
             dressCode: vestimenta,
             mapsUrl: remoteEvent.maps_url,
             contactWhatsApp: telefono,
-            honoreePhoto: remoteEvent.foto_url || fotoFromAdmin || localInv?.honoreePhoto || (slug === 'thiago-8-argentina' ? '/ejemplos/thiago.webp' : ''),
+            honoreePhoto: validPhoto(remoteEvent.foto_url) || validPhoto(fotoFromAdmin) || localInv?.honoreePhoto || (slug === 'thiago-8-argentina' ? '/ejemplos/thiago.webp' : ''),
             message: mensaje,
             status: remoteEvent.estado?.toLowerCase(),
             views: remoteEvent.views,
