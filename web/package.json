@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test:fase2": "node tests/fase2.test.mjs",
+    "test": "node tests/router.test.mjs && node tests/secreto.test.mjs && node tests/fase2.test.mjs"
   },
   "dependencies": {
     "framer-motion": "^10.16.0",
