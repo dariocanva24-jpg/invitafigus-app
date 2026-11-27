@@ -4,6 +4,12 @@ import { readFromSheets, writeToSheets } from '../lib/server/sheets.js'
 export default async function handler(req, res) {
   if (!isAdminRequest(req)) return sendJson(res, 401, { error: 'Sesión expirada. Ingresá de nuevo.' })
 
+  // Sin la planilla conectada el panel entra igual y avisa qué falta.
+  if (!process.env.APPS_SCRIPT_URL) {
+    if (req.method === 'GET') return sendJson(res, 200, { rows: [], warning: 'MISSING_APPS_SCRIPT_URL' })
+    return sendJson(res, 200, { ok: false, warning: 'MISSING_APPS_SCRIPT_URL' })
+  }
+
   try {
     if (req.method === 'GET') {
       const action = new URL(req.url, 'http://localhost').searchParams.get('action') || 'getAll'

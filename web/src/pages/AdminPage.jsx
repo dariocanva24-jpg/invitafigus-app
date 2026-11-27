@@ -45,8 +45,13 @@ export default function AdminPage() {
     setLoading(true)
     try {
       const data = await fetchAllInvitations()
-      setInvitations(data)
-      setError('')
+      const list = Array.isArray(data) ? data : (Array.isArray(data?.rows) ? data.rows : [])
+      setInvitations(list)
+      if (!Array.isArray(data) && data?.warning === 'MISSING_APPS_SCRIPT_URL') {
+        setError('Entraste bien ✅ pero falta conectar la planilla (APPS_SCRIPT_URL). Mientras tanto la lista aparece vacía.')
+      } else {
+        setError('')
+      }
     } catch (err) {
       setError('Error al cargar invitaciones: ' + err.message)
     } finally {

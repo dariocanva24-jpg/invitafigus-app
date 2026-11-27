@@ -34,13 +34,8 @@ export default async function handler(req, res) {
       code: 'MISSING_SESSION_SECRET',
     })
   }
-  if (!process.env.APPS_SCRIPT_URL) {
-    return sendJson(res, 500, {
-      error: 'Falta la variable APPS_SCRIPT_URL en Vercel: sin eso el panel no puede leer la planilla.',
-      code: 'MISSING_APPS_SCRIPT_URL',
-    })
-  }
-
+  // APPS_SCRIPT_URL NO bloquea el ingreso: sin ella entrás al panel igual,
+  // solo que la lista de la planilla aparece vacía hasta que la cargues.
   setSessionCookie(res, createSessionToken())
-  return sendJson(res, 200, { ok: true })
+  return sendJson(res, 200, { ok: true, warning: process.env.APPS_SCRIPT_URL ? null : 'MISSING_APPS_SCRIPT_URL' })
 }
