@@ -3,7 +3,7 @@ import { readFromSheets, writeToSheets, writeToSheetsWithRetry } from '../server
 import { getPayment, verifyWebhookSignature, mpConfig } from '../server/mercadopago.js'
 import { isAllowedAmount, planForAmount } from '../server/pricing.js'
 
-// POST /api/webhook/mercadopago
+// POST /api/webhook-mercadopago
 //
 // Seguridad (en este orden, sin excepciones):
 //  1. Firma x-signature (HMAC SHA-256). Si no valida → 401, se descarta.

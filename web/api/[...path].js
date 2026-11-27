@@ -36,6 +36,16 @@ const ROUTES = {
   'order': order,
   'consent': consent,
   'panel': panel,
+  // Rutas anidadas: Vercel NO las entrega al catch-all (las manda al CDN y
+  // devuelve 404), así que además se registran con guion. Son las URLs que usa
+  // la app y las que se configuran en Mercado Pago.
+  'checkout-preference': checkoutPreference,
+  'webhook-mercadopago': webhookMercadopago,
+}
+
+// Alias viejos con barra: por si alguna preferencia ya creada en Mercado Pago
+// apunta ahí. No se listan entre las rutas oficiales.
+const LEGACY_ROUTES = {
   'checkout/preference': checkoutPreference,
   'webhook/mercadopago': webhookMercadopago,
 }
@@ -57,7 +67,7 @@ function resolveRoute(req) {
 
 export default function handler(req, res) {
   const route = resolveRoute(req)
-  const target = ROUTES[route]
+  const target = ROUTES[route] || LEGACY_ROUTES[route]
 
   if (!target) {
     res.statusCode = 404

@@ -60,7 +60,7 @@ export async function createPreference({ orderId, plan, slug, payerEmail, payerN
       ...(payerName ? { name: payerName } : {}),
     },
     external_reference: orderId,
-    notification_url: `${base}/api/webhook/mercadopago`,
+    notification_url: `${base}/api/webhook-mercadopago`,
     back_urls: {
       success: `${base}/crear?status=success&external_reference=${encodeURIComponent(orderId)}`,
       failure: `${base}/crear?status=failure&external_reference=${encodeURIComponent(orderId)}`,

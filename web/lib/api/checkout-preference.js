@@ -3,7 +3,7 @@ import { writeToSheets, readFromSheets } from '../server/sheets.js'
 import { createPreference, isMpConfigured, mpConfig, toE164 } from '../server/mercadopago.js'
 import { amountForPlan, planForAmount } from '../server/pricing.js'
 
-// POST /api/checkout/preference
+// POST /api/checkout-preference
 // Crea (o reutiliza) la preferencia de Checkout Pro para un pedido.
 //
 // Reglas:
@@ -99,7 +99,7 @@ export default async function handler(req, res) {
       reused: false,
     })
   } catch (error) {
-    console.error('checkout/preference:', error.message)
+    console.error('checkout-preference:', error.message)
     return sendJson(res, 502, { error: error.message })
   }
 }

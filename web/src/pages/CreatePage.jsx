@@ -34,6 +34,12 @@ export default function CreatePage() {
   const [withBump, setWithBump] = useState(false)
   const [bumpBlocked, setBumpBlocked] = useState(false) // una vez que salió, ya no se puede sumar
   const [consentMarketing, setConsentMarketing] = useState(false)
+  // Mientras se crea la preferencia en Mercado Pago: el botón avisa que está
+  // trabajando (la operación tarda 1-4 segundos y parecía que no hacía nada).
+  const [openingPayment, setOpeningPayment] = useState(false)
+  // Último link de pago: si el navegador bloquea la pestaña nueva, se puede
+  // abrir a mano desde esta misma pantalla.
+  const [lastInitPoint, setLastInitPoint] = useState('')
 
   const plan = withBump ? 'completo' : 'base'
   const total = withBump ? PRICE_COMPLETE : PRICE_BASE
@@ -170,6 +176,63 @@ export default function CreatePage() {
     }, 2500)
   }
 
+  // ── Memoria del último pedido ──────────────────────────────────────────
+  // El cliente puede volver de Mercado Pago en OTRA pestaña (o recargar /crear).
+  // Ahí React arranca de cero y la pantalla volvía al paso 6 con el botón de
+  // pagar, como si nada hubiera pasado. Guardamos el pedido y lo restauramos.
+  useEffect(() => {
+    const status = searchParams.get('status')
+    if (!status) return
+    if (createdInvitation?.slug) return // ya está restaurado
+
+    let saved = null
+    try { saved = JSON.parse(localStorage.getItem('invitafigus_ultimo_pedido') || 'null') } catch {}
+
+    // external_reference que devuelve MP: IF-<slug>-<plan>
+    const ref = searchParams.get('external_reference') || ''
+    const fromRef = ref.startsWith('IF-') ? ref.slice(3) : ''
+    const slugFromRef = fromRef.replace(/-(base|completo)$/, '')
+    const planFromRef = fromRef.endsWith('-completo') ? 'completo' : fromRef.endsWith('-base') ? 'base' : ''
+
+    const code = saved?.code || slugFromRef
+    if (!code) return
+    const planRec = planFromRef || saved?.plan || 'base'
+
+    setCreatedInvitation({
+      slug: code,
+      childName: saved?.childName || '',
+      date: saved?.date || '',
+      startTime: '',
+      endTime: '',
+      location: saved?.location || '',
+    })
+    setWithBump(planRec === 'completo')
+    setBumpBlocked(true)
+    setStep(7)
+    if (status === 'success') {
+      setPaymentStatus('checking')
+      setPaymentMessage('Volvimos de Mercado Pago. Estamos confirmando el pago con ellos.')
+    } else if (status === 'pending') {
+      setPaymentStatus('pending')
+      setPaymentMessage('Mercado Pago nos avisó que el pago quedó pendiente (por ejemplo, en efectivo). Se activa solo cuando se acredita.')
+    } else {
+      setPaymentStatus('error')
+      setPaymentMessage('Mercado Pago rechazó o canceló el pago. Tu pedido sigue guardado: podés reintentar cuando quieras.')
+    }
+
+    if (status === 'success') {
+      fetch(`/api/order?slug=${encodeURIComponent(code)}`)
+        .then(r => r.json())
+        .then(data => {
+          if (data?.order?.estado === 'ACTIVA') {
+            setPaymentStatus('paid')
+            setPaymentMessage('Pago acreditado. Tu invitación quedó activada.')
+          }
+        })
+        .catch(() => {})
+    }
+  }, [searchParams, createdInvitation?.slug])
+
   // Guarda el pedido en la planilla (estado PENDIENTE) para que el operador
   // pueda activarlo aunque el cliente cierre el navegador o pierda el link.
   const saveOrder = async (code) => {
@@ -218,20 +281,33 @@ export default function CreatePage() {
     } catch {}
     setPaymentStatus('pending')
     setPaymentMessage('Te abrimos Mercado Pago. Cuando termines, volvés solo y se activa sin que hagas nada.')
-    await saveOrder(code)
-    setStep(7)
-    // El bump ya quedó fijado: a partir de acá no se puede sumar.
-    setBumpBlocked(true)
+    setOpeningPayment(true)
 
-    // Abrimos la pestaña en el mismo gesto del click (si esperamos al fetch,
-    // el navegador bloquea el popup). Después le ponemos la URL definitiva.
+    // La pestaña se abre AHORA, en el mismo gesto del click. Si se abre después
+    // de esperar la red, el navegador la bloquea y el pago nunca aparece.
     const tab = window.open('about:blank', '_blank')
     const goTo = (url) => {
+      setLastInitPoint(url)
       if (tab && !tab.closed) tab.location.href = url
       else window.open(url, '_blank')
     }
+
+    // Se recuerda el pedido para poder retomar la pantalla si vuelve de MP.
     try {
-      const res = await fetch('/api/checkout/preference', {
+      localStorage.setItem('invitafigus_ultimo_pedido', JSON.stringify({
+        code,
+        plan,
+        total,
+        childName: formData.childName,
+        date: formData.date,
+        location: formData.location || formData.address,
+        ts: Date.now(),
+      }))
+    } catch {}
+
+    try {
+      await saveOrder(code)
+      const res = await fetch('/api/checkout-preference', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -247,6 +323,8 @@ export default function CreatePage() {
         setPaymentStatus('paid')
         setPaymentMessage('Este pedido ya estaba pagado y activo.')
         if (tab && !tab.closed) tab.close()
+        setStep(7)
+        setBumpBlocked(true)
         return
       }
       if (res.ok && data.initPoint) {
@@ -264,6 +342,11 @@ export default function CreatePage() {
       if (tab && !tab.closed) tab.close()
       setPaymentStatus('error')
       setPaymentMessage(error.message)
+    } finally {
+      setOpeningPayment(false)
+      setStep(7)
+      // El bump ya quedó fijado: a partir de acá no se puede sumar.
+      setBumpBlocked(true)
     }
   }
 
@@ -326,14 +409,16 @@ export default function CreatePage() {
           <div className="flex items-center gap-3">
             <button 
               onClick={() => {
+                // En 6 y 7 no se manda a la invitación: si el pedido todavía
+                // está PENDIENTE, esa pantalla dice "¡Creá tu invitación!" y
+                // parece que se perdió todo. Con la X se sale al inicio.
                 if (step === 6 || step === 7) {
-                  if (createdInvitation?.slug) navigate(`/invitacion/${createdInvitation.slug}`)
-                  else navigate('/')
+                  navigate('/')
                 } else if (step > 1) handleBack()
                 else navigate('/')
               }}
               className="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center hover:bg-white/10 transition-colors"
-              aria-label={step === 6 || step === 7 ? 'Ver mi invitación' : 'Volver'}
+              aria-label={step === 6 || step === 7 ? 'Salir' : 'Volver'}
             >
               {step > 1 && step !== 6 && step !== 7 ? <ChevronLeft size={20} /> : <X size={20} />}
             </button>
@@ -362,7 +447,7 @@ export default function CreatePage() {
           {(step === 6 || step === 7) && createdInvitation?.slug ? (
             <button onClick={() => navigate(`/invitacion/${createdInvitation.slug}`)} className="text-[#FFD700] text-xs font-bold hover:underline">Ver invitación</button>
           ) : (
-            <button onClick={() => navigate('/')} className="text-white/30 hover:text-white/60 transition-colors"><X size={20} /></button>
+            <button onClick={() => navigate('/')} aria-label="Salir" className="text-white/30 hover:text-white/60 transition-colors"><X size={20} /></button>
           )}
         </div>
       </div>
@@ -618,11 +703,24 @@ export default function CreatePage() {
                   </span>
                 </div>
 
-                <button onClick={openPayment} className="w-full py-4 rounded-xl bg-gradient-to-r from-[#FFD700] to-[#FFA500] text-[#0a0e27] font-bold text-lg tracking-wide hover:opacity-90 transition-all shadow-lg shadow-[#FFD700]/20">
-                  Pagar y recibir mi invitación · ARS ${total.toLocaleString('es-AR')}
+                <button
+                  onClick={openPayment}
+                  disabled={openingPayment}
+                  className="w-full py-4 rounded-xl bg-gradient-to-r from-[#FFD700] to-[#FFA500] text-[#0a0e27] font-bold text-lg tracking-wide hover:opacity-90 transition-all shadow-lg shadow-[#FFD700]/20 disabled:opacity-60 disabled:cursor-wait flex items-center justify-center gap-3"
+                >
+                  {openingPayment ? (
+                    <>
+                      <span className="h-4 w-4 rounded-full border-2 border-[#0a0e27] border-t-transparent animate-spin" />
+                      Abriendo Mercado Pago…
+                    </>
+                  ) : (
+                    <>Pagar y recibir mi invitación · ARS ${total.toLocaleString('es-AR')}</>
+                  )}
                 </button>
                 <p className="text-center text-white/30 text-xs">
-                  Pago único con Mercado Pago. Al aprobarse, la invitación se activa sola.
+                  {openingPayment
+                    ? 'Estamos creando el pago. Se abre una pestaña nueva: no la cierres.'
+                    : 'Pago único con Mercado Pago. Al aprobarse, la invitación se activa sola.'}
                 </p>
               </div>
             </motion.div>
@@ -669,6 +767,17 @@ export default function CreatePage() {
                   <span className="text-2xl" aria-hidden="true">📷</span>
                   Enviar foto por WhatsApp
                 </a>
+
+                {paymentStatus !== 'paid' && lastInitPoint && (
+                  <a
+                    href={lastInitPoint}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#009EE3] px-4 py-4 text-sm font-bold text-white hover:opacity-90 transition-opacity"
+                  >
+                    Ir a pagar en Mercado Pago
+                  </a>
+                )}
 
                 {paymentStatus !== 'paid' && (
                   <div className="rounded-xl border border-white/10 bg-white/[0.03] p-5 space-y-4">
