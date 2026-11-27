@@ -6,6 +6,7 @@ require('dotenv').config({ path: '.env.local' });
 require('dotenv').config();
 const rsvpStore = require('./lib/rsvpStore');
 const paymentStore = require('./lib/paymentStore');
+const panelStore = require('./lib/panelStore');
 const mercadopago = require('./lib/mercadopago');
 const whatsapp = require('./lib/whatsapp');
 
@@ -79,6 +80,26 @@ app.post('/api/payments/start', async (req, res) => {
   }
 });
 
+// Checkout Pro con retorno automático: el usuario paga y vuelve solo a la web.
+// Si MP_ACCESS_TOKEN no está configurado, devuelve { status:'unconfigured' }
+// y el frontend cae al link de pago estático.
+app.post('/api/payments/create', async (req, res) => {
+  const code = String(req.body?.code || '').trim();
+  const amount = Number(req.body?.amount) || 10000;
+  // El baseUrl lo manda la web (window.location.origin); si no llega usamos PUBLIC_BASE_URL.
+  const baseUrl = String(req.body?.baseUrl || process.env.PUBLIC_BASE_URL || '').replace(/\/$/, '');
+  if (!/^[a-z0-9-]{3,120}$/i.test(code)) return res.status(400).json({ error: 'Código inválido' });
+  if (!baseUrl) return res.status(400).json({ error: 'Falta baseUrl' });
+  try {
+    await paymentStore.start(code, amount);
+    const preference = await mercadopago.createPreference({ code, amount, baseUrl });
+    return res.status(201).json(preference);
+  } catch (err) {
+    console.error('Crear preferencia MP:', err.message);
+    return res.status(502).json({ error: 'No se pudo crear el pago en Mercado Pago' });
+  }
+});
+
 app.get('/api/payments/status', async (req, res) => {
   const code = String(req.query.code || '');
   if (!/^[a-z0-9-]{3,120}$/i.test(code)) return res.status(400).json({ error: 'Código inválido' });
@@ -108,6 +129,47 @@ app.post('/api/payments/verify', async (req, res) => {
   } catch (err) {
     console.error('Verificación MP:', err.message);
     return res.status(502).json({ error: 'No se pudo verificar con MercadoPago' });
+  }
+});
+
+// --- Panel del organizador: clave privada por invitación ---
+// El creador recibe su clave al terminar el pedido y la usa para entrar a /panel/:slug
+app.post('/api/panels/issue', async (req, res) => {
+  const code = String(req.body?.code || '').trim();
+  if (!/^[a-z0-9-]{3,120}$/i.test(code)) return res.status(400).json({ error: 'Código inválido' });
+  try {
+    return res.status(201).json(await panelStore.issue(code));
+  } catch (err) {
+    console.error('Panel issue:', err.message);
+    return res.status(500).json({ error: 'No se pudo generar la clave del panel' });
+  }
+});
+
+// Resumen para el organizador: confirmados, no asisten, total de personas.
+app.post('/api/panels/summary', async (req, res) => {
+  const code = String(req.body?.code || '').trim();
+  const key = String(req.body?.key || '');
+  try {
+    if (!(await panelStore.verify(code, key))) return res.status(401).json({ error: 'Clave incorrecta' });
+    const rows = await rsvpStore.listRSVPs(code);
+    const confirmed = rows.filter((row) => row.status === 'confirmed');
+    const declined = rows.filter((row) => row.status === 'declined');
+    const guests = confirmed.reduce((sum, row) => sum + Number(row.guests || 0), 0);
+    return res.json({
+      code,
+      totals: {
+        responses: rows.length,
+        confirmed: confirmed.length,
+        declined: declined.length,
+        guests,
+        people: confirmed.length + guests,
+      },
+      confirmed: confirmed.map(({ name, guests, notes, created_at }) => ({ name, guests, notes, created_at })),
+      declined: declined.map(({ name, guests, notes, created_at }) => ({ name, guests, notes, created_at })),
+    });
+  } catch (err) {
+    console.error('Panel summary:', err.message);
+    return res.status(500).json({ error: 'No se pudo leer el panel' });
   }
 });
 
@@ -165,6 +227,7 @@ function validateRSVP(body) {
   if (name.length < 2 || name.length > 80) return { error: 'El nombre debe tener entre 2 y 80 caracteres' };
   if (phone.length < 6 || phone.length > 20) return { error: 'El WhatsApp no es válido' };
   if (!['confirmed', 'declined'].includes(status)) return { error: 'Estado inválido' };
+  // Email opcional: lo usa el organizador para avisar cambios.
   if (!Number.isInteger(guests) || guests < 0 || guests > 20) return { error: 'Cantidad de acompañantes inválida' };
   if (notes.length > 300) return { error: 'La nota es demasiado larga' };
 
@@ -235,14 +298,28 @@ async function createTable() {
   }
 }
 
-const PORT = process.env.PORT || 3001;
-async function bootstrap() {
+// Prepara las tablas. Se puede llamar varias veces sin problema (idempotente).
+async function initStores() {
   if (process.env.STORE !== 'file') await createTable();
   await rsvpStore.ensureSchema();
   await paymentStore.ensureSchema();
-  app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT} (store: ${rsvpStore.usePostgres ? 'postgres' : 'file'})`));
+  await panelStore.ensureSchema();
 }
-bootstrap().catch((error) => {
-  console.error('No se pudo iniciar el servidor:', error.message);
-  process.exit(1);
-});
+
+const PORT = process.env.PORT || 3001;
+
+// Exportado para Vercel / serverless: la app se monta sin escuchar puerto.
+module.exports = app;
+module.exports.initStores = initStores;
+
+// Ejecución local o en un host tipo Railway/Render: levanta el puerto.
+if (require.main === module) {
+  initStores()
+    .then(() => {
+      app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT} (store: ${rsvpStore.usePostgres ? 'postgres' : 'file'})`));
+    })
+    .catch((error) => {
+      console.error('No se pudo iniciar el servidor:', error.message);
+      process.exit(1);
+    });
+}

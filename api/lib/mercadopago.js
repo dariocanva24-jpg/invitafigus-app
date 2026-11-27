@@ -42,4 +42,46 @@ const isApproved = (payment) =>
   ( payment.currencyId === 'ARS' || !payment.currencyId) &&
   (!payment.code || !payment.amount || payment.amount >= 9500);
 
-module.exports = { getPayment, isApproved, verifyWebhookSignature, hasToken: () => Boolean(TOKEN()) };
+// Crea una preferencia de Checkout Pro con retorno automático a la web.
+// Devuelve init_point (producción) o sandbox_init_point en modo test.
+async function createPreference({ code, amount, title, baseUrl }) {
+  if (!TOKEN()) return { status: 'unconfigured' };
+  const body = {
+    items: [{
+      id: code,
+      title: title || 'InvitaFigus · Invitación digital',
+      quantity: 1,
+      currency_id: 'ARS',
+      unit_price: Number(amount) || 10000,
+    }],
+    external_reference: code,
+    statement_descriptor: 'INVITAFIGUS',
+    notification_url: process.env.MP_WEBHOOK_URL || undefined,
+    back_urls: {
+      success: `${baseUrl}/crear?status=success&external_reference=${encodeURIComponent(code)}`,
+      pending: `${baseUrl}/crear?status=pending&external_reference=${encodeURIComponent(code)}`,
+      failure: `${baseUrl}/crear?status=failure&external_reference=${encodeURIComponent(code)}`,
+    },
+    auto_return: 'approved',
+    payment_methods: { installments: 1 },
+  };
+  const response = await fetch('https://api.mercadopago.com/checkout/preferences', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${TOKEN()}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.message || `MercadoPago respondió ${response.status}`);
+  return {
+    status: 'created',
+    preferenceId: data.id,
+    initPoint: data.init_point,
+    sandboxInitPoint: data.sandbox_init_point,
+    externalReference: code,
+  };
+}
+
+module.exports = {
+  getPayment, isApproved, verifyWebhookSignature, createPreference,
+  hasToken: () => Boolean(TOKEN()),
+};
