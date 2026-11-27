@@ -337,6 +337,14 @@ const InvitationPage = () => {
               className="mb-6"
             >
               <ShareButtons event={event} />
+              {/* Invitación impresa: el organizador puede bajarla en PDF o
+                  imprimirla en A4 para entregar en mano. */}
+              <button
+                onClick={() => navigate(`/imprimir/${slug}`)}
+                className="mt-3 w-full rounded-xl border border-[#FFD700]/30 bg-[#FFD700]/[0.06] px-4 py-3 text-xs font-semibold text-[#FFD700]/90 hover:bg-[#FFD700]/10 transition-colors"
+              >
+                🖨 Versión impresa (PDF / A4)
+              </button>
             </motion.div>
           )}
         </AnimatePresence>

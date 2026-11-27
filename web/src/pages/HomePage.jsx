@@ -39,7 +39,10 @@ const BENEFITS = [
 const REVIEWS = []
 
 // PRECIO: una sola fuente de verdad para toda la landing.
+// Las cifras salen del mismo lugar que cobra el checkout (pricing del servidor).
 const PRECIO = '10.000'
+const PRECIO_COMPLETO = '14.999'
+const BUMP = '4.999'
 
 // ─── MODAL DE PAGO (solo para ejemplo) ─────────────────────────────────
 
@@ -577,6 +580,104 @@ export default function HomePage() {
           </div>
         </section>
       )}
+
+      {/* SECCIÓN 6.5 — PRECIOS
+          Solo dos opciones reales y las mismas cifras que cobra el checkout.
+          El valor del panel del organizador es lo que más se pregunta, así que
+          va explicado acá y no escondido en una lista de beneficios. */}
+      <section id="precios" className="py-20 px-4">
+        <div className="max-w-4xl mx-auto">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            className="mb-12 text-center"
+          >
+            <h2 className="mb-3 text-3xl md:text-4xl font-bebas tracking-wider">
+              DOS FORMAS DE <span className="text-[#FFD700]">JUGARLA</span>
+            </h2>
+            <p className="text-sm text-white/40">Pago único. Sin suscripción. Las dos duran 12 meses.</p>
+          </motion.div>
+
+          <div className="grid gap-5 md:grid-cols-2">
+            {/* Plan base */}
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              className="flex flex-col rounded-2xl border border-white/12 bg-white/[0.03] p-6"
+            >
+              <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/40">Invitación</p>
+              <div className="mt-2 flex items-baseline gap-2">
+                <span className="text-4xl font-black text-white font-bebas tracking-tight">${PRECIO}</span>
+                <span className="text-xs text-white/40">ars · una sola vez</span>
+              </div>
+              <ul className="mt-5 flex-1 space-y-2">
+                {[
+                  'Figurita con el escudo del equipo que elijas',
+                  'Link propio para mandar por WhatsApp',
+                  'Cuenta regresiva y datos del cumple',
+                  'Confirmación de asistencia de los invitados',
+                  'Link activo 12 meses',
+                ].map((item) => (
+                  <li key={item} className="flex items-start gap-2 text-sm text-white/65">
+                    <Check size={15} className="mt-0.5 shrink-0 text-[#FFD700]/80" />
+                    {item}
+                  </li>
+                ))}
+              </ul>
+              <button
+                onClick={() => navigate('/crear')}
+                className="mt-6 w-full rounded-full border border-white/20 py-3 text-sm font-bold text-white transition-colors hover:bg-white/5"
+              >
+                Crear mi invitación
+              </button>
+            </motion.div>
+
+            {/* Plan completo */}
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              transition={{ delay: 0.1 }}
+              className="relative flex flex-col rounded-2xl border border-[#FFD700]/40 bg-gradient-to-b from-[#FFD700]/[0.08] to-transparent p-6"
+            >
+              <span className="absolute -top-3 left-6 rounded-full bg-[#FFD700] px-3 py-1 text-[10px] font-black uppercase tracking-wider text-[#0a0e27]">
+                Cumple completo
+              </span>
+              <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#FFD700]/80">Todo lo de la invitación +</p>
+              <div className="mt-2 flex items-baseline gap-2">
+                <span className="text-4xl font-black text-white font-bebas tracking-tight">${PRECIO_COMPLETO}</span>
+                <span className="text-xs text-white/40">ars · una sola vez</span>
+              </div>
+              <p className="mt-1 text-xs text-white/40">
+                Son ${BUMP} más que la invitación sola. Se elige en un solo paso, sin volver a pagar.
+              </p>
+              <ul className="mt-5 flex-1 space-y-2">
+                {[
+                  'Todo lo de la invitación',
+                  'Panel del organizador: asistentes, no asistentes y total',
+                  'Lista de asistentes exportable para el salón',
+                  'PDF de la figurita para imprimir y regalar',
+                  'Un segundo diseño con otro equipo',
+                  'Cambio de fecha sin costo, siempre',
+                ].map((item) => (
+                  <li key={item} className="flex items-start gap-2 text-sm text-white/75">
+                    <Check size={15} className="mt-0.5 shrink-0 text-[#FFD700]" />
+                    {item}
+                  </li>
+                ))}
+              </ul>
+              <button
+                onClick={() => navigate('/crear')}
+                className="mt-6 w-full rounded-full bg-gradient-to-r from-[#FFD700] to-[#FFA500] py-3 text-sm font-bold text-[#0a0e27] transition-opacity hover:opacity-90"
+              >
+                Crear con cumple completo
+              </button>
+            </motion.div>
+          </div>
+        </div>
+      </section>
 
       {/* SECCIÓN 7 — CTA FINAL */}
       <section className="py-24 px-4 relative overflow-hidden">

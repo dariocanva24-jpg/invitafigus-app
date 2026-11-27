@@ -1,4 +1,5 @@
 import { motion } from 'framer-motion'
+import { useRef, useEffect, useState } from 'react'
 import { getTeamById } from '../../data/teams'
 import { useAllTeams } from '../../services/dynamicTeams'
 
@@ -56,7 +57,9 @@ function customShield(name, initials) {
   return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`
 }
 
-export default function PlayerCard({ event }) {
+// En papel las animaciones no sirven: la figurita tiene que estar quieta y
+// visible desde el primer instante. `still` la deja dibujada y sin movimiento.
+export default function PlayerCard({ event, still = false }) {
   const allTeams = useAllTeams()
   const findTeam = (id) => getTeamById(id) || allTeams.find((team) => team.id === id) || null
   const isCustomTeam = event?.team === 'custom' || !findTeam(event?.team)
@@ -97,12 +100,14 @@ export default function PlayerCard({ event }) {
     return parts.join(' ') || 'JUGADOR'
   })()
 
+  const anim = still
+    ? { initial: false, animate: { opacity: 1, scale: 1, rotateY: 0 }, transition: { duration: 0 } }
+    : { initial: { opacity: 0, scale: 0.9, rotateY: -15 }, animate: { opacity: 1, scale: 1, rotateY: 0 }, transition: { duration: 0.8, type: "spring" } }
+
   return (
     <div className="w-full max-w-sm mx-auto">
       <motion.div 
-        initial={{ opacity: 0, scale: 0.9, rotateY: -15 }}
-        animate={{ opacity: 1, scale: 1, rotateY: 0 }}
-        transition={{ duration: 0.8, type: "spring" }}
+        {...anim}
         className="relative rounded-3xl overflow-hidden"
         style={{
           background: 'linear-gradient(180deg, #0f1538 0%, #1a1f4b 20%, #0a0e27 50%, #0f1538 100%)',
@@ -236,10 +241,18 @@ export default function PlayerCard({ event }) {
                 </div>
               </div>
               
-              <div className="text-right">
-                <span className="text-[10px] text-white/50 uppercase tracking-widest block">Edad</span>
-                <span className="text-2xl font-black text-white font-bebas">{event?.honoreeAge || event?.age || 8}</span>
-                <span className="text-[10px] text-white/50 uppercase">años</span>
+              {/* Edad: el número y "años" van alineados a la derecha, pegados.
+                  Antes el número flotaba suelto y "años" caía debajo. */}
+              <div className="text-right leading-none">
+                <span className="mb-1 block text-[10px] uppercase tracking-widest text-white/50">Edad</span>
+                <span className="inline-flex items-center justify-end gap-1.5 whitespace-nowrap">
+                  <span className="text-2xl font-black leading-none text-white font-bebas tabular-nums">
+                    {event?.honoreeAge || event?.age || 8}
+                  </span>
+                  <span className="text-[10px] font-semibold uppercase leading-none tracking-wide text-white/50">
+                    años
+                  </span>
+                </span>
               </div>
             </div>
 
@@ -254,9 +267,9 @@ export default function PlayerCard({ event }) {
                         background: `linear-gradient(90deg, ${stat.color}88, ${stat.color})`,
                         boxShadow: `0 0 8px ${stat.color}44`,
                       }}
-                      initial={{ width: 0 }}
+                      initial={still ? false : { width: 0 }}
                       animate={{ width: `${stat.value}%` }}
-                      transition={{ duration: 1, delay: i * 0.1 }}
+                      transition={still ? { duration: 0 } : { duration: 1, delay: i * 0.1 }}
                     />
                   </div>
                   <span className="text-[10px] font-bold w-5 text-right" style={{ color: stat.color }}>

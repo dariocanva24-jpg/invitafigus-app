@@ -213,7 +213,12 @@ export default function AlbumCover({ honoreeName, team, customTeamName, onOpen }
                       <path d="M8 3v10M3 8l5 5 5-5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
                     </svg>
                   </div>
-                  <span className="text-white/40 text-[10px] tracking-[0.3em] uppercase font-medium">Tocá para abrir</span>
+                  {/* pl-[0.3em]: el tracking agrega espacio TAMBIÉN después de la
+                      última letra y el texto quedaba corrido a la izquierda del
+                      círculo. Con este padding vuelve a quedar centrado. */}
+                  <span className="pl-[0.3em] text-center text-[10px] font-medium uppercase tracking-[0.3em] text-white/40 whitespace-nowrap">
+                    Tocá para abrir
+                  </span>
                 </div>
               </motion.div>
             )}

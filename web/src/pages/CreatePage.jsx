@@ -283,9 +283,32 @@ export default function CreatePage() {
     setPaymentMessage('Te abrimos Mercado Pago. Cuando termines, volvés solo y se activa sin que hagas nada.')
     setOpeningPayment(true)
 
-    // La pestaña se abre AHORA, en el mismo gesto del click. Si se abre después
-    // de esperar la red, el navegador la bloquea y el pago nunca aparece.
-    const tab = window.open('about:blank', '_blank')
+    // La pestaña se abre AHORA, en el mismo gesto del click, con una pantalla
+    // de espera adentro. Si se abre recién después de esperar la red, el
+    // navegador la bloquea; y si se abre en blanco, el cliente se asusta.
+    const tab = window.open('', '_blank')
+    if (tab) {
+      try {
+        tab.document.write(`<!doctype html><html lang="es"><head><meta charset="utf-8">
+          <title>Abriendo Mercado Pago…</title>
+          <meta name="viewport" content="width=device-width,initial-scale=1">
+          <style>
+            body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;
+              background:#0a0e27;color:#fff;font-family:system-ui,-apple-system,Segoe UI,sans-serif;text-align:center}
+            .box{padding:24px}
+            .spin{width:44px;height:44px;margin:0 auto 18px;border-radius:50%;
+              border:4px solid rgba(255,215,0,.25);border-top-color:#FFD700;animation:s 1s linear infinite}
+            @keyframes s{to{transform:rotate(360deg)}}
+            p{margin:6px 0;font-size:15px}
+            small{color:rgba(255,255,255,.45);font-size:12px}
+          </style></head><body><div class="box">
+            <div class="spin"></div>
+            <p><b>Abriendo Mercado Pago…</b></p>
+            <small>No cierres esta pestaña</small>
+          </div></body></html>`)
+        tab.document.close()
+      } catch {}
+    }
     const goTo = (url) => {
       setLastInitPoint(url)
       if (tab && !tab.closed) tab.location.href = url
@@ -341,7 +364,15 @@ export default function CreatePage() {
     } catch (error) {
       if (tab && !tab.closed) tab.close()
       setPaymentStatus('error')
-      setPaymentMessage(error.message)
+      // Los errores técnicos no le dicen nada a una mamá apurada: se traducen.
+      const texto = String(error.message || '')
+      if (/registrar el pedido/i.test(texto)) {
+        setPaymentMessage('No pudimos registrar el pedido antes de cobrar. Tu figurita está guardada: escribinos por WhatsApp y lo destrabamos en minutos.')
+      } else if (/Mercado Pago/i.test(texto)) {
+        setPaymentMessage('Mercado Pago no respondió. Tu figurita está guardada: probá de nuevo en un minuto o escribinos por WhatsApp.')
+      } else {
+        setPaymentMessage(texto || 'No pudimos abrir el pago. Probá de nuevo en unos segundos.')
+      }
     } finally {
       setOpeningPayment(false)
       setStep(7)
@@ -768,6 +799,17 @@ export default function CreatePage() {
                   Enviar foto por WhatsApp
                 </a>
 
+                {paymentStatus !== 'paid' && (
+                  <a
+                    href={whatsappLinks.noMercadoPago(formData.childName, createdInvitation?.slug, total.toLocaleString('es-AR'))}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex w-full items-center justify-center gap-2 rounded-xl border border-white/15 bg-white/[0.04] px-4 py-3 text-xs font-semibold text-white/70 transition-colors hover:bg-white/[0.08]"
+                  >
+                    ¿No tenés Mercado Pago? Coordinar el pago por WhatsApp
+                  </a>
+                )}
+
                 {paymentStatus !== 'paid' && lastInitPoint && (
                   <a
                     href={lastInitPoint}
@@ -833,6 +875,7 @@ export default function CreatePage() {
                       <button onClick={() => navigate(`/invitacion/${createdInvitation.slug}`)} className="w-full rounded-lg bg-[#FFD700] px-4 py-3 text-sm font-bold text-[#1a1a3e]">Ver mi invitación</button>
                       <button onClick={() => navigate(`/panel/${createdInvitation.slug}`)} className="w-full rounded-lg border border-white/20 px-4 py-3 text-sm font-semibold text-white hover:bg-white/5">Ver panel de asistentes</button>
                       <button onClick={() => { const url = `${window.location.origin}/invitacion/${createdInvitation.slug}`; navigator.clipboard.writeText(url); alert('Link copiado: ' + url) }} className="w-full rounded-lg bg-white/5 border border-white/10 px-4 py-3 text-sm font-semibold text-white/80">Copiar link para compartir</button>
+                      <button onClick={() => navigate(`/imprimir/${createdInvitation.slug}`)} className="w-full rounded-lg border border-[#FFD700]/40 bg-[#FFD700]/10 px-4 py-3 text-sm font-semibold text-[#FFD700]">🖨 Invitación impresa (PDF / A4)</button>
                     </div>
                   </div>
                 )}
@@ -890,6 +933,7 @@ export default function CreatePage() {
                 <div className="flex flex-col gap-2">
                   {createdInvitation?.slug && <button onClick={() => navigate(`/invitacion/${createdInvitation.slug}`)} className="w-full py-3 rounded-xl bg-white/5 border border-white/10 text-sm font-semibold text-white hover:bg-white/10">Ver mi invitación</button>}
                   {createdInvitation?.slug && <button onClick={() => navigate(`/panel/${createdInvitation.slug}`)} className="w-full py-3 rounded-xl bg-white/5 border border-white/10 text-sm font-semibold text-white hover:bg-white/10">Ver panel de asistentes</button>}
+                  {createdInvitation?.slug && <button onClick={() => navigate(`/imprimir/${createdInvitation.slug}`)} className="w-full py-3 rounded-xl border border-[#FFD700]/40 bg-[#FFD700]/10 text-sm font-semibold text-[#FFD700]">🖨 Invitación impresa (PDF / A4)</button>}
                   <button onClick={() => navigate('/')} className="w-full py-3 text-white/40 text-sm hover:text-white/70">Volver al inicio</button>
                 </div>
               </div>

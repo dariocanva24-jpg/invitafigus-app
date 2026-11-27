@@ -101,7 +101,9 @@ console.log('\n▶ TEST 4 · Secreto correcto → pasa la validación')
 console.log('\n▶ TEST 5 · Acciones públicas NO piden secreto')
 {
   const { ctx } = makeContext({ secret: 'clave-de-verdad' })
-  for (const action of ['getBySlug', 'getOrder', 'addRSVP', 'incrementViews', 'rsvpCount']) {
+  // getOrder NO va acá: devuelve estado y monto de un pedido, así que exige
+  // el secreto compartido (lo usa la web a través del servidor).
+  for (const action of ['getBySlug', 'addRSVP', 'incrementViews', 'rsvpCount']) {
     const res = ctx.doGet({ parameter: { action, slug: 'x' } })
     const parsed = JSON.parse(res.text)
     check(`${action} no responde "Acceso denegado"`, !/Acceso denegado/.test(parsed.error || ''), parsed.error)
@@ -111,7 +113,7 @@ console.log('\n▶ TEST 5 · Acciones públicas NO piden secreto')
 console.log('\n▶ TEST 6 · Acciones privadas por GET SÍ piden secreto')
 {
   const { ctx } = makeContext({ secret: 'clave-de-verdad' })
-  for (const action of ['getAll', 'getAudit', 'getTeams']) {
+  for (const action of ['getAll', 'getAudit', 'getTeams', 'getOrder']) {
     const res = callGet(ctx, { action, secret: 'mala' })
     check(`${action} denegada sin secreto válido`, res.success === false && /denegado/i.test(res.error), res.error)
   }

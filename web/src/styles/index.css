@@ -152,3 +152,37 @@
 ::-webkit-scrollbar-thumb:hover {
   background: rgba(0, 212, 255, 0.5);
 }
+/* ─────────────────────────────────────────────────────────────────────────
+   IMPRESIÓN · la invitación impresa son DOS hojas A4:
+   1) credencial con la figurita  2) invitación completa a sangre.
+   Se fuerza el color para que la impresora no aplane el fondo oscuro.
+   ───────────────────────────────────────────────────────────────────────── */
+@media print {
+  @page {
+    size: A4;
+    margin: 0;
+  }
+
+  html,
+  body {
+    background: #ffffff !important;
+  }
+
+  /* Cada hoja arranca en una página nueva. */
+  .print-sheet {
+    break-after: page;
+    page-break-after: always;
+  }
+
+  .print-sheet:last-of-type {
+    break-after: auto;
+    page-break-after: auto;
+  }
+
+  /* Todo lo que tenga fondo de color tiene que salir tal cual. */
+  .print-sheets,
+  .print-sheets * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+}

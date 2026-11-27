@@ -22,6 +22,12 @@ export const whatsappLinks = {
     detail: `Hola, ya pagué la invitación de ${name || 'mi hijo o hija'}. Código: ${slug || 'sin código'}. Te envío la foto por aquí.`,
   }),
 
+  // No tiene Mercado Pago (o prefiere otro medio): se coordina el pago a mano.
+  noMercadoPago: (name, slug, total) => chatUrl({
+    intent: 'pago',
+    detail: `Hola, quiero pagar la invitación de ${name || 'mi hijo o hija'} pero no tengo Mercado Pago. Código: ${slug || 'sin código'}${total ? `. Total: $${total}` : ''}. ¿Me pasás cómo pagar?`,
+  }),
+
   // Comprobante cuando no tiene el número de operación
   paymentProof: (slug, paymentId) => chatUrl({
     intent: 'pago',

@@ -10,6 +10,14 @@ export default function RSVPForm({ event }) {
   const [error, setError] = useState('')
   const [count, setCount] = useState({ total: 0, confirmed: 0, guests: 0 })
   const [notified, setNotified] = useState(false)
+  // El navegador bloquea el envío cuando el teléfono no parece válido, pero en
+  // celular ese cartel nativo casi no se ve: parecía que el botón no hacía
+  // nada. Guardamos qué campos faltan y lo mostramos nosotros.
+  const [touched, setTouched] = useState(false)
+  const faltantes = []
+  if (!String(form.name).trim() || String(form.name).trim().length < 2) faltantes.push('tu nombre completo')
+  const soloDigitos = String(form.whatsapp).replace(/\D/g, '')
+  if (soloDigitos.length < 6 || soloDigitos.length > 15) faltantes.push('un WhatsApp válido (con código de área)')
 
   const slug = event?.slug
 
@@ -29,6 +37,11 @@ export default function RSVPForm({ event }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault()
+    setTouched(true)
+    if (faltantes.length > 0) {
+      setError(`Falta ${faltantes.join(' y ')}.`)
+      return
+    }
     setSubmitting(true)
     setError('')
     try {
@@ -146,17 +159,21 @@ export default function RSVPForm({ event }) {
         </span>
       </div>
 
-      <form onSubmit={handleSubmit} className="mt-4 space-y-4 relative z-10">
+      <form onSubmit={handleSubmit} noValidate className="mt-4 space-y-4 relative z-10">
         <div>
           <label className="block text-sm font-medium text-white/70 mb-1">Tu nombre *</label>
           <input
             type="text"
             value={form.name}
-            onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))}
-            required
-            minLength={2}
+            onChange={(e) => { setForm((p) => ({ ...p, name: e.target.value })); setError('') }}
             maxLength={80}
-            className="w-full rounded-xl bg-white/5 border border-white/10 text-white placeholder-white/30 px-4 py-3 outline-none focus:border-cyan-500/50 focus:ring-2 focus:ring-cyan-500/20 transition-all"
+            inputMode="text"
+            autoComplete="name"
+            className={`w-full rounded-xl bg-white/5 border text-white placeholder-white/30 px-4 py-3 outline-none focus:ring-2 transition-all ${
+              touched && (!form.name.trim() || form.name.trim().length < 2)
+                ? 'border-red-500/60 focus:border-red-500/60 focus:ring-red-500/20'
+                : 'border-white/10 focus:border-cyan-500/50 focus:ring-cyan-500/20'
+            }`}
             placeholder="Tu nombre"
           />
         </div>
@@ -165,10 +182,16 @@ export default function RSVPForm({ event }) {
           <input
             type="tel"
             value={form.whatsapp}
-            onChange={(e) => setForm((p) => ({ ...p, whatsapp: e.target.value }))}
-            required
-            className="w-full rounded-xl bg-white/5 border border-white/10 text-white placeholder-white/30 px-4 py-3 outline-none focus:border-cyan-500/50 focus:ring-2 focus:ring-cyan-500/20 transition-all"
-            placeholder="+54911..."
+            onChange={(e) => { setForm((p) => ({ ...p, whatsapp: e.target.value })); setError('') }}
+            inputMode="tel"
+            autoComplete="tel"
+            maxLength={25}
+            className={`w-full rounded-xl bg-white/5 border text-white placeholder-white/30 px-4 py-3 outline-none focus:ring-2 transition-all ${
+              touched && (soloDigitos.length < 6 || soloDigitos.length > 15)
+                ? 'border-red-500/60 focus:border-red-500/60 focus:ring-red-500/20'
+                : 'border-white/10 focus:border-cyan-500/50 focus:ring-cyan-500/20'
+            }`}
+            placeholder="Ej: 388 412 3456"
           />
         </div>
         <div>
@@ -240,8 +263,14 @@ export default function RSVPForm({ event }) {
             className="w-full rounded-xl bg-white/5 border border-white/10 text-white placeholder-white/30 px-4 py-3 outline-none focus:border-cyan-500/50 focus:ring-2 focus:ring-cyan-500/20 transition-all resize-none"
             placeholder="Alguna nota especial..."
           />
+          <p className="mt-1 text-right text-[10px] text-white/25">{form.notes.length}/300</p>
         </div>
 
+        {touched && faltantes.length > 0 && (
+          <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+            Completá {faltantes.join(' y ')} para confirmar.
+          </p>
+        )}
         {error && (
           <p className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-300">{error}</p>
         )}
