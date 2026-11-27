@@ -60,9 +60,15 @@ const InvitationPage = () => {
             return phone;
           })();
           
+          // Los pedidos nuevos pueden no tener slug guardado: lo calculamos igual que el panel.
+          const computedSlug = remoteEvent.slug || [remoteEvent.nombre, remoteEvent.edad, remoteEvent.equipo]
+            .filter(Boolean).join('-')
+            .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+            .toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+
           const mappedEvent = {
-            id: `inv-${remoteEvent.slug}`,
-            slug: remoteEvent.slug,
+            id: `inv-${computedSlug}`,
+            slug: computedSlug,
             childName: remoteEvent.nombre,
             honoreeName: apellido,
             nickname: apodo,

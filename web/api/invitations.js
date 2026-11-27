@@ -33,6 +33,7 @@ export default async function handler(req, res) {
             apodo: String(inv.nickname || '').slice(0, 40),
             edad: String(inv.honoreeAge || '').slice(0, 3),
             equipo: String(inv.customTeamName || inv.team || '').slice(0, 80),
+            contacto: String(inv.childName || '').slice(0, 60),
             fecha: String(inv.date || '').slice(0, 20),
             hora: String(inv.time || '').slice(0, 30),
             lugar: String(inv.location || inv.address || '').slice(0, 200),

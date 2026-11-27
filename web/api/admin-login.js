@@ -8,8 +8,9 @@ export default async function handler(req, res) {
     if (!process.env.ADMIN_PASSWORD) missing.push('ADMIN_PASSWORD')
     if (!process.env.SESSION_SECRET) missing.push('SESSION_SECRET')
     if (!process.env.APPS_SCRIPT_URL) missing.push('APPS_SCRIPT_URL')
-    if (!process.env.API_BASE_URL) missing.push('API_BASE_URL')
-    if (!process.env.API_TOKEN) missing.push('API_TOKEN')
+    // API_BASE_URL / API_TOKEN son OPCIONALES: las confirmaciones y el panel
+    // funcionan con la planilla, sin servidor extra.
+
     return sendJson(res, 200, { ready: missing.length === 0, missing })
   }
 

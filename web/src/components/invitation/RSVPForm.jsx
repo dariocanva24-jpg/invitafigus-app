@@ -40,6 +40,7 @@ export default function RSVPForm({ event }) {
       const data = await response.json().catch(() => ({}))
       if (!response.ok) throw new Error(data.error || 'No se pudo guardar la respuesta')
       setNotified(Boolean(data.notified))
+      if (data.count) setCount(data.count)
       setSubmitted(true)
       await loadCount()
     } catch (err) {

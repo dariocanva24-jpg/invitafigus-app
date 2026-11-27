@@ -17,6 +17,8 @@ export default function AdminPage() {
   const [editForm, setEditForm] = useState({})
   const [rsvpCounts, setRsvpCounts] = useState({})
   const [config, setConfig] = useState(null)
+  const [backupMsg, setBackupMsg] = useState('')
+  const [showSheetGuide, setShowSheetGuide] = useState(false)
 
   // Diagnóstico: si falta alguna variable en Vercel lo avisamos antes de entrar.
   useEffect(() => {
@@ -45,7 +47,27 @@ export default function AdminPage() {
     setLoading(true)
     try {
       const data = await fetchAllInvitations()
-      const list = Array.isArray(data) ? data : (Array.isArray(data?.rows) ? data.rows : [])
+      const rawList = Array.isArray(data) ? data : (Array.isArray(data?.rows) ? data.rows : [])
+      // La planilla de respuestas del formulario trae los datos "crudos":
+      // acá los ordenamos y calculamos el slug para cada pedido.
+      const slugify = (value) => String(value || '')
+        .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+      const list = rawList.map((inv) => {
+        const nombre = inv.nombre || ''
+        const edad = String(inv.edad || '').replace(/\D/g, '')
+        const equipo = inv.equipo || ''
+        return {
+          ...inv,
+          nombre,
+          edad,
+          equipo,
+          slug: inv.slug || [slugify(nombre), slugify(edad), slugify(equipo)].filter(Boolean).join('-'),
+          estado: String(inv.estado || 'PENDIENTE').toUpperCase(),
+          foto_url: inv.foto_url || '',
+          views: Number(inv.views) || 0,
+        }
+      })
       setInvitations(list)
       if (!Array.isArray(data) && data?.warning === 'MISSING_APPS_SCRIPT_URL') {
         setError('Entraste bien ✅ pero falta conectar la planilla (APPS_SCRIPT_URL). Mientras tanto la lista aparece vacía.')
@@ -138,6 +160,48 @@ export default function AdminPage() {
     } catch (err) {
       setError('Error al guardar: ' + err.message)
     }
+  }
+
+  // Respaldo local: descarga un archivo con todas las invitaciones.
+  // Sirve como red de seguridad si la planilla no está conectada.
+  const exportBackup = () => {
+    try {
+      const data = JSON.parse(localStorage.getItem('invitafigus_data') || '{"invitations":[]}')
+      const payload = {
+        exportado: new Date().toISOString(),
+        invitaciones: data.invitations || [],
+        pedidos: invitations,
+      }
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `invitafigus-respaldo-${new Date().toISOString().slice(0, 10)}.json`
+      a.click()
+      URL.revokeObjectURL(url)
+      setBackupMsg('✅ Respaldo descargado en tu carpeta de Descargas.')
+    } catch {
+      setBackupMsg('⚠ No se pudo generar el respaldo.')
+    }
+  }
+
+  const importBackup = async (event) => {
+    const file = event.target.files?.[0]
+    if (!file) return
+    try {
+      const text = await file.text()
+      const parsed = JSON.parse(text)
+      const list = parsed.invitaciones || parsed.invitations || (Array.isArray(parsed) ? parsed : [])
+      if (!Array.isArray(list) || !list.length) throw new Error('El archivo no tiene invitaciones')
+      const current = JSON.parse(localStorage.getItem('invitafigus_data') || '{"invitations":[]}')
+      const byslug = new Map([...(current.invitations || []), ...list].map((inv) => [inv.slug, inv]))
+      localStorage.setItem('invitafigus_data', JSON.stringify({ ...current, invitations: [...byslug.values()] }))
+      setBackupMsg(`✅ Se cargaron ${list.length} invitaciones desde el respaldo.`)
+      await loadInvitations()
+    } catch (err) {
+      setBackupMsg('⚠ Archivo inválido: ' + err.message)
+    }
+    event.target.value = ''
   }
 
   const copyLink = (slug) => {
@@ -235,6 +299,56 @@ export default function AdminPage() {
           </div>
         )}
 
+        {/* Planilla no conectada: guía paso a paso para crearla en 5 minutos */}
+        {config?.missing?.includes('APPS_SCRIPT_URL') && (
+          <div className="mb-4 rounded-xl border border-amber-500/30 bg-amber-500/[0.07] p-4">
+            <div className="flex items-start justify-between gap-3 flex-wrap">
+              <div>
+                <p className="text-amber-300 text-sm font-bold">La planilla todavía no está conectada</p>
+                <p className="text-amber-100/60 text-xs mt-1">
+                  El panel funciona, pero la lista de pedidos aparece vacía hasta conectar Google Sheets.
+                </p>
+              </div>
+              <button
+                onClick={() => setShowSheetGuide((v) => !v)}
+                className="rounded-lg border border-amber-400/40 px-3 py-1.5 text-xs font-semibold text-amber-200 hover:bg-amber-400/10"
+              >
+                {showSheetGuide ? 'Ocultar guía' : 'Cómo conectarla'}
+              </button>
+            </div>
+
+            {showSheetGuide && (
+              <div className="mt-4 space-y-2 text-xs text-amber-50/80 leading-relaxed">
+                <p><b>1.</b> Abrí una planilla nueva en <a href="https://sheets.new" target="_blank" rel="noopener noreferrer" className="underline text-amber-200">sheets.new</a> y ponele de nombre <i>InvitaFigus pedidos</i>.</p>
+                <p><b>2.</b> En la primera fila escribí estas columnas, una por celda: <span className="font-mono">slug · nombre · apellido · apodo · edad · equipo · fecha · hora · lugar · telefono · email · mensaje · vestimenta · estado · foto_url</span></p>
+                <p><b>3.</b> Menú <b>Extensiones → Apps Script</b>. Borrá todo y pegá el código que te pasé en la guía.</p>
+                <p><b>4.</b> <b>Implementar → Nueva implementación → Aplicación web</b>; en “Quién tiene acceso” elegí <b>Cualquier persona</b>. Copiá la URL que termina en <span className="font-mono">/exec</span>.</p>
+                <p><b>5.</b> Vercel → Settings → Environment Variables → <span className="font-mono">APPS_SCRIPT_URL</span> = esa URL → <b>Redeploy</b>.</p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Respaldo: siempre disponible, no depende de la planilla */}
+        <div className="mb-6 rounded-xl border border-white/10 bg-white/[0.03] p-4">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div>
+              <p className="text-white/80 text-sm font-bold">Respaldo de pedidos</p>
+              <p className="text-white/35 text-xs mt-1">Descargá una copia de todo lo que hay guardado en este navegador.</p>
+            </div>
+            <div className="flex gap-2">
+              <button onClick={exportBackup} className="rounded-lg bg-white/10 border border-white/15 px-3 py-2 text-xs font-semibold text-white hover:bg-white/20">
+                ⬇ Descargar respaldo
+              </button>
+              <label className="cursor-pointer rounded-lg bg-white/5 border border-white/10 px-3 py-2 text-xs font-semibold text-white/80 hover:bg-white/10">
+                ⬆ Restaurar
+                <input type="file" accept="application/json" onChange={importBackup} className="hidden" />
+              </label>
+            </div>
+          </div>
+          {backupMsg && <p className="mt-3 text-xs text-[#FFD700]/85">{backupMsg}</p>}
+        </div>
+
         {loading ? (
           <div className="text-center py-12">
             <div className="w-8 h-8 border-2 border-[#FFD700] border-t-transparent rounded-full animate-spin mx-auto mb-4" />
@@ -270,7 +384,7 @@ export default function AdminPage() {
                     )}
                     <div className="flex-1">
                       <p className="font-bold text-white">
-                        {inv.nombre} {inv.apellido || ''}
+                        {inv.nombre} {inv.apellido ? ' ' + inv.apellido : ''}
                         {inv.apodo && ` "${inv.apodo}"`}
                       </p>
                       <p className="text-white/40 text-sm">
