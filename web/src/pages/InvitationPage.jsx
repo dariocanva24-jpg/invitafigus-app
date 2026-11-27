@@ -5,6 +5,7 @@ import { ArrowLeft, Volume2, VolumeX } from "lucide-react";
 import { useApp } from "../context/AppContext";
 import { fetchInvitationBySlug, incrementViewsRemote } from "../services/googleSheetsApi";
 import { teamIdFromName, customTeamNameFrom } from "../data/teams";
+import { whatsappLinks } from "../config/whatsapp";
 
 // Las carpetas de Drive no son imágenes: si el link no es una foto, la ignoramos.
 const validPhoto = (url) => {
@@ -39,6 +40,8 @@ const InvitationPage = () => {
   const { getEventBySlug, setCurrentInvitation } = useApp();
   const [event, setEvent] = useState(null);
   const [loading, setLoading] = useState(true);
+  // Si el link venció (12 meses), guardamos la fecha para avisar con claridad.
+  const [expired, setExpired] = useState(null);
   const [error, setError] = useState(null);
 
   const [showCard, setShowCard] = useState(false);
@@ -51,7 +54,14 @@ const InvitationPage = () => {
       setLoading(true);
       try {
         const remoteEvent = await fetchInvitationBySlug(slug);
-        
+
+        // Link vencido (12 meses): aviso con salida, sin tratarlo como error.
+        if (remoteEvent && remoteEvent.expired) {
+          setExpired(remoteEvent.expires_at || '');
+          setEvent(null);
+          return;
+        }
+
         if (remoteEvent) {
           const localData = JSON.parse(localStorage.getItem('invitafigus_data') || '{}');
           const localInv = localData.invitations?.find(inv => inv.slug === slug);
@@ -158,6 +168,35 @@ const InvitationPage = () => {
         </div>
       </div>
     );
+  }
+
+  if (expired) {
+    return (
+      <div className="min-h-screen bg-[#0a0e27] flex items-center justify-center px-4">
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="text-center max-w-sm">
+          <div className="w-20 h-20 mx-auto mb-6 rounded-full bg-[#FFD700]/10 flex items-center justify-center">
+            <span className="text-3xl">⏳</span>
+          </div>
+          <h2 className="text-2xl font-bold text-white mb-2">Este link ya no está activo</h2>
+          <p className="text-gray-400 mb-1">
+            Las invitaciones duran 12 meses{expired ? ` (esta venció el ${expired})` : ''}.
+          </p>
+          <p className="text-gray-500 text-sm mb-6">Si es tu invitación, escribinos y la reactivamos sin costo.</p>
+          <button
+            onClick={() => window.open(whatsappLinks.support(), '_blank')}
+            className="w-full px-6 py-3 bg-[#22c55e] text-white font-bold rounded-lg hover:bg-[#16a34a] transition-colors mb-3"
+          >
+            📱 Escribir por WhatsApp
+          </button>
+          <button
+            onClick={() => navigate('/crear')}
+            className="w-full px-6 py-3 border border-white/20 text-white font-semibold rounded-lg hover:bg-white/5 transition-colors"
+          >
+            Crear una invitación nueva
+          </button>
+        </motion.div>
+      </div>
+    )
   }
 
   if (!event) {

@@ -30,14 +30,16 @@ const BENEFITS = [
   { icon: Clock, title: 'Cuenta regresiva incluida', desc: 'Todos ven cuánto falta para el gran día.' },
   { icon: Heart, title: 'Confirmación de asistencia', desc: 'Los invitados responden directo a tu celular.' },
   { icon: Shield, title: 'Diseño estilo figurita FIFA', desc: 'Escudo real, stats, rating. Como un juego.' },
-  { icon: Zap, title: 'Lista en 2 minutos', desc: 'Sin registro. Sin pagar. Sin esperar.' },
+  { icon: Zap, title: 'Lista en 2 minutos', desc: 'Sin registro. La ves antes de pagar.' },
 ]
 
-const TESTIMONIALS = [
-  { name: 'Mariana G.', role: 'Mamá de Thiago, 8 años', text: 'La invitación de Argentina fue un éxito. Los amigos de mi hijo no podían creer que tuviera su propia figurita.', stars: 5 },
-  { name: 'Gustavo R.', role: 'Papá de Benicio, 9 años', text: 'Hice la de River para el cumple. Los padres me preguntaron dónde la había hecho. Un golazo.', stars: 5 },
-  { name: 'Luciana M.', role: 'Mamá de Zoe, 7 años', text: 'La de Boca quedó hermosa. Hasta los abuelos supieron confirmar por WhatsApp. Recomiendo.', stars: 5 },
-]
+// RESEÑAS: agregar SOLO textos de clientes reales, con su permiso.
+// Formato: { name: 'Mariana G.', role: 'Mamá de Thiago, 8 años', text: '...', stars: 5 }
+// Mientras esté vacío, la sección no se muestra en la landing.
+const REVIEWS = []
+
+// PRECIO: una sola fuente de verdad para toda la landing.
+const PRECIO = '10.000'
 
 // ─── MODAL DE PAGO (solo para ejemplo) ─────────────────────────────────
 
@@ -46,7 +48,7 @@ function PaymentModal({ isOpen, onClose, navigate }) {
     'La experiencia completa, no una simple imagen',
     'Su página con enlace para mandársela a quien quieras',
     'Sin marca de agua · se abre con un toque',
-    'Disponible para compartir por 90 días',
+    'El link queda activo 12 meses',
   ]
 
   return (
@@ -121,9 +123,8 @@ function PaymentModal({ isOpen, onClose, navigate }) {
                 </div>
                 <span className="text-white/30 text-xs">· pago único · sin suscripción</span>
                 
-                <div className="mt-3 inline-flex items-center gap-2 px-3 py-1 rounded-full bg-red-500/10 border border-red-500/20">
-                  <span className="text-red-400 text-xs line-through">La competencia: ARS 18.000</span>
-                  <span className="text-[#FFD700] text-xs font-bold">¡Ahorrás 44%!</span>
+                <div className="mt-3 inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/5 border border-white/10">
+                  <span className="text-white/50 text-xs">Invitación completa, pago único. Sin suscripción.</span>
                 </div>
               </div>
 
@@ -252,7 +253,7 @@ export default function HomePage() {
             className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white/5 border border-white/10 mb-8"
           >
             <span className="w-2 h-2 rounded-full bg-green-400" />
-            <span className="text-xs font-semibold text-white/60 tracking-wider uppercase">Usado por +500 familias en Argentina</span>
+            <span className="text-xs font-semibold text-white/60 tracking-wider uppercase">Creado en Jujuy, Argentina</span>
           </motion.div>
 
           <motion.h1
@@ -309,6 +310,16 @@ export default function HomePage() {
               Hablar por WhatsApp
             </button>
           </motion.div>
+
+          {/* A2 — precio visible en el hero */}
+          <motion.p
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.6, delay: 0.7 }}
+            className="mt-6 text-sm text-white/50"
+          >
+            <span className="font-bold text-[#FFD700]">ARS ${PRECIO}</span> · pago único · sin suscripción
+          </motion.p>
         </div>
 
         <div className="absolute bottom-8 left-1/2 -translate-x-1/2">
@@ -427,6 +438,16 @@ export default function HomePage() {
             ))}
           </div>
 
+          <div className="mt-10 text-center">
+            <button
+              onClick={() => navigate('/crear')}
+              className="px-8 py-4 rounded-full bg-gradient-to-r from-[#FF6B35] to-[#ec4899] text-white font-bold text-lg tracking-wide hover:opacity-90 transition-all shadow-lg shadow-[#FF6B35]/30"
+            >
+              Crear la figurita de mi hijo · ${PRECIO}
+            </button>
+            <p className="mt-3 text-xs text-white/40">Pago único, sin suscripción. La ves antes de pagar.</p>
+          </div>
+
           <div className="mt-10 max-w-3xl mx-auto rounded-2xl border border-[#FFD700]/30 bg-gradient-to-b from-white/[0.05] to-transparent p-7 text-center">
             <svg className="mx-auto mb-4" width="42" height="42" viewBox="0 0 42 42" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
               <path d="M21 3 35 8v11c0 9-5.6 15.5-14 19C12.6 34.5 7 28 7 19V8L21 3Z" stroke="#FFD700" strokeWidth="1.2" strokeLinejoin="round" />
@@ -513,50 +534,49 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* SECCIÓN 6 — TESTIMONIOS */}
-      <section className="py-20 px-4">
-        <div className="max-w-5xl mx-auto">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
-            className="text-center mb-12"
-          >
-            <h2 className="text-3xl md:text-4xl font-bebas tracking-wider mb-3">
-              LO QUE DICEN <span className="text-[#FFD700]">LOS PADRES</span>
-            </h2>
-          </motion.div>
+      {/* SECCIÓN 6 — RESEÑAS REALES
+          Solo se muestran reseñas verificadas que el usuario haya cargado en
+          REVIEWS. Vacío = la sección no aparece (mejor nada que algo inventado). */}
+      {REVIEWS.length > 0 && (
+        <section className="py-20 px-4">
+          <div className="max-w-5xl mx-auto">
+            <div className="text-center mb-12">
+              <h2 className="text-3xl md:text-4xl font-bebas tracking-wider mb-3">
+                LO QUE DICEN <span className="text-[#FFD700]">LOS PADRES</span>
+              </h2>
+            </div>
 
-          <div className="grid md:grid-cols-3 gap-6">
-            {TESTIMONIALS.map((t, i) => (
-              <motion.div
-                key={i}
-                initial={{ opacity: 0, y: 20 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
-                transition={{ delay: i * 0.15 }}
-                className="p-6 rounded-2xl bg-gradient-to-b from-white/[0.05] to-transparent border border-white/10"
-              >
-                <div className="flex gap-1 mb-4">
-                  {[...Array(t.stars)].map((_, s) => (
-                    <Star key={s} size={14} className="text-[#FFD700] fill-[#FFD700]" />
-                  ))}
-                </div>
-                <p className="text-white/60 text-sm leading-relaxed mb-6">"{t.text}"</p>
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#FF6B35] to-[#ec4899] flex items-center justify-center">
-                    <span className="text-white font-bold text-sm">{t.name[0]}</span>
+            <div className="grid md:grid-cols-3 gap-6">
+              {REVIEWS.map((t, i) => (
+                <motion.div
+                  key={i}
+                  initial={{ opacity: 0, y: 20 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true }}
+                  transition={{ delay: i * 0.15 }}
+                  className="p-6 rounded-2xl bg-gradient-to-b from-white/[0.05] to-transparent border border-white/10"
+                >
+                  <div className="flex gap-1 mb-4">
+                    {[...Array(t.stars)].map((_, s) => (
+                      <Star key={s} size={14} className="text-[#FFD700] fill-[#FFD700]" />
+                    ))}
                   </div>
-                  <div>
-                    <p className="font-bold text-sm">{t.name}</p>
-                    <p className="text-white/30 text-xs">{t.role}</p>
+                  <p className="text-white/60 text-sm leading-relaxed mb-6">"{t.text}"</p>
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#FF6B35] to-[#ec4899] flex items-center justify-center">
+                      <span className="text-white font-bold text-sm">{t.name[0]}</span>
+                    </div>
+                    <div>
+                      <p className="font-bold text-sm">{t.name}</p>
+                      <p className="text-white/30 text-xs">{t.role}</p>
+                    </div>
                   </div>
-                </div>
-              </motion.div>
-            ))}
+                </motion.div>
+              ))}
+            </div>
           </div>
-        </div>
-      </section>
+        </section>
+      )}
 
       {/* SECCIÓN 7 — CTA FINAL */}
       <section className="py-24 px-4 relative overflow-hidden">
@@ -583,7 +603,7 @@ export default function HomePage() {
               onClick={() => navigate('/crear')}
               className="px-10 py-4 rounded-full bg-gradient-to-r from-[#FF6B35] to-[#ec4899] text-white font-bold text-lg tracking-wide hover:opacity-90 transition-all shadow-xl shadow-[#FF6B35]/30"
             >
-              Crear invitación
+              Crear invitación · ${PRECIO}
             </button>
 
             <button
@@ -595,8 +615,8 @@ export default function HomePage() {
             </button>
           </div>
 
-          <p className="mt-8 text-white/20 text-xs">
-            Sin registro. Sin costo. En menos de 2 minutos.
+          <p className="mt-8 text-white/30 text-xs">
+            Sin registro. La ves antes de pagar. <span className="text-white/60 font-semibold">${PRECIO}, pago único.</span>
           </p>
         </motion.div>
       </section>

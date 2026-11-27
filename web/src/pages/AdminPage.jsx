@@ -4,6 +4,7 @@ import { useApp } from '../context/AppContext'
 import { fetchAllInvitations, activateInvitationRemote, deleteInvitationRemote, updateInvitationField } from '../services/googleSheetsApi'
 import { whatsappLinks } from '../config/whatsapp'
 import TeamManager from '../components/admin/TeamManager'
+import PaymentAudit from '../components/admin/PaymentAudit'
 
 
 // Una foto sirve solo si es una IMAGEN real. Las carpetas de Drive
@@ -328,9 +329,16 @@ export default function AdminPage() {
           >
             Equipos y escudos
           </button>
+          <button
+            onClick={() => setTab('pagos')}
+            className={`rounded-xl px-4 py-2 text-sm font-bold transition ${tab === 'pagos' ? 'bg-[#FFD700] text-[#0a0e27]' : 'bg-white/5 text-white/60 hover:bg-white/10'}`}
+          >
+            Pagos y origen
+          </button>
         </div>
 
         {tab === 'equipos' && <TeamManager />}
+        {tab === 'pagos' && <PaymentAudit />}
 
         {/* Planilla no conectada: guía paso a paso para crearla en 5 minutos */}
         {tab === 'pedidos' && config?.missing?.includes('APPS_SCRIPT_URL') && (

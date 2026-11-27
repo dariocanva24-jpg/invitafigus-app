@@ -12,6 +12,7 @@ import { whatsappLinks, chatUrl } from '../config/whatsapp'
 import AlmaCrossSellCard from '../components/crossSell/AlmaCrossSellCard.jsx'
 import CountdownTimer from '../components/invitation/CountdownTimer.jsx'
 import SparkleField from '../components/brand/SparkleField.jsx'
+import CumpleCompletoBump, { PRICE_BASE, PRICE_COMPLETE } from '../components/checkout/CumpleCompletoBump.jsx'
 
 
 export default function CreatePage() {
@@ -22,7 +23,6 @@ export default function CreatePage() {
   const [isLoading, setIsLoading] = useState(false)
   const [previewUrl, setPreviewUrl] = useState(null)
   const fileInputRef = useRef(null)
-  const [showPaymentModal, setShowPaymentModal] = useState(false)
   const [createdInvitation, setCreatedInvitation] = useState(null)
   const [paymentStatus, setPaymentStatus] = useState('idle')
   const [paymentId, setPaymentId] = useState('')
@@ -30,7 +30,13 @@ export default function CreatePage() {
   const [customTeamName, setCustomTeamName] = useState('')
   const [panelKey, setPanelKey] = useState('')
   const [saveStatus, setSaveStatus] = useState('idle') // idle | saving | saved | pending
-  const [showManualVerify, setShowManualVerify] = useState(false)
+  // Bump en un solo paso: se elige ANTES de crear la preferencia (una transacción).
+  const [withBump, setWithBump] = useState(false)
+  const [bumpBlocked, setBumpBlocked] = useState(false) // una vez que salió, ya no se puede sumar
+  const [consentMarketing, setConsentMarketing] = useState(false)
+
+  const plan = withBump ? 'completo' : 'base'
+  const total = withBump ? PRICE_COMPLETE : PRICE_BASE
   const [searchParams] = useSearchParams()
 
   const [formData, setFormData] = useState({
@@ -170,12 +176,22 @@ export default function CreatePage() {
     if (!code) return
     setSaveStatus('saving')
     try {
+      const params = new URLSearchParams(window.location.search)
+      const utm = {
+        source: params.get('utm_source') || localStorage.getItem('if_utm_source') || '',
+        medium: params.get('utm_medium') || localStorage.getItem('if_utm_medium') || '',
+        campaign: params.get('utm_campaign') || localStorage.getItem('if_utm_campaign') || '',
+        content: params.get('utm_content') || localStorage.getItem('if_utm_content') || '',
+      }
       const res = await fetch('/api/invitations', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: 'create',
           paymentId: paymentId || '',
+          plan,
+          utm,
+          consent_marketing: consentMarketing,
           invitation: {
             ...formData,
             slug: code,
@@ -198,13 +214,15 @@ export default function CreatePage() {
   const openPayment = async () => {
     const code = createdInvitation?.slug || `${formData.childName.toLowerCase().replace(/\s+/g, '-')}-${formData.honoreeAge}-${formData.team === 'custom' ? 'personalizado' : formData.team}`
     try {
-      localStorage.setItem('invitafigus_pending_payment', JSON.stringify({ code, ts: Date.now() }))
+      localStorage.setItem('invitafigus_pending_payment', JSON.stringify({ code, plan, ts: Date.now() }))
     } catch {}
     setPaymentStatus('pending')
-    setPaymentMessage('Te abrimos Mercado Pago en otra pestaña. Cuando termines, volvé acá: verificamos solos, sin que escribas nada.')
-    saveOrder(code)
-    setShowPaymentModal(false)
+    setPaymentMessage('Te abrimos Mercado Pago. Cuando termines, volvés solo y se activa sin que hagas nada.')
+    await saveOrder(code)
     setStep(7)
+    // El bump ya quedó fijado: a partir de acá no se puede sumar.
+    setBumpBlocked(true)
+
     // Abrimos la pestaña en el mismo gesto del click (si esperamos al fetch,
     // el navegador bloquea el popup). Después le ponemos la URL definitiva.
     const tab = window.open('about:blank', '_blank')
@@ -213,20 +231,39 @@ export default function CreatePage() {
       else window.open(url, '_blank')
     }
     try {
-      const res = await fetch('/api/payment', {
+      const res = await fetch('/api/checkout/preference', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'create', code, baseUrl: window.location.origin }),
+        body: JSON.stringify({
+          slug: code,
+          plan,
+          baseUrl: window.location.origin,
+          email: formData.email,
+          childName: formData.childName,
+        }),
       })
       const data = await res.json().catch(() => ({}))
+      if (res.ok && data.alreadyPaid) {
+        setPaymentStatus('paid')
+        setPaymentMessage('Este pedido ya estaba pagado y activo.')
+        if (tab && !tab.closed) tab.close()
+        return
+      }
       if (res.ok && data.initPoint) {
         goTo(data.initPoint)
         return
       }
-      // Fallback: link de pago estático (se verifica por polling del estado)
-      goTo('https://mpago.la/1X2RD5k')
-    } catch {
-      goTo('https://mpago.la/1X2RD5k')
+      if (data.code === 'MP_NOT_CONFIGURED') {
+        if (tab && !tab.closed) tab.close()
+        setPaymentStatus('manual')
+        setPaymentMessage('El cobro automático todavía no está activado. Escribinos por WhatsApp y te pasamos el link de pago.')
+        return
+      }
+      throw new Error(data.error || 'No se pudo abrir el pago')
+    } catch (error) {
+      if (tab && !tab.closed) tab.close()
+      setPaymentStatus('error')
+      setPaymentMessage(error.message)
     }
   }
 
@@ -238,13 +275,9 @@ export default function CreatePage() {
     if (!code) return
     const id = setInterval(async () => {
       try {
-        const res = await fetch('/api/payment', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'status', code }),
-        })
+        const res = await fetch(`/api/order?slug=${encodeURIComponent(code)}`)
         const data = await res.json().catch(() => ({}))
-        if (data.status === 'paid') {
+        if (data?.order?.estado === 'ACTIVA') {
           setPaymentStatus('paid')
           setPaymentMessage('Pago acreditado. Tu invitación quedó activada.')
           try { localStorage.removeItem('invitafigus_pending_payment') } catch {}
@@ -260,57 +293,26 @@ export default function CreatePage() {
     const pid = searchParams.get('payment_id') || searchParams.get('collection_id')
     const ref = searchParams.get('external_reference')
     if (!status || !createdInvitation?.slug) return
-    if (status === 'success' && pid) {
-      setPaymentId(String(pid))
+    if (status === 'success') {
+      if (pid) setPaymentId(String(pid))
       setStep(7)
       setPaymentStatus('checking')
-      fetch('/api/payment', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'verify', code: ref || createdInvitation.slug, paymentId: String(pid) }),
-      }).then(r => r.json()).then(data => {
-        if (data.status === 'paid') {
-          setPaymentStatus('paid')
-          setPaymentMessage('Pago acreditado. Tu invitación quedó activada.')
-        } else {
-          setPaymentStatus('pending')
-          setPaymentMessage('Volviste de Mercado Pago. Estamos verificando tu pago, puede tardar unos minutos.')
-        }
-      }).catch(() => setPaymentStatus('pending'))
+      // No activamos nada desde acá: solo miramos el estado del pedido.
+      // La activación la hace el webhook de Mercado Pago, del lado del servidor.
+      fetch(`/api/order?slug=${encodeURIComponent(createdInvitation.slug)}`)
+        .then(r => r.json())
+        .then(data => {
+          if (data?.order?.estado === 'ACTIVA') {
+            setPaymentStatus('paid')
+            setPaymentMessage('Pago acreditado. Tu invitación quedó activada.')
+          } else {
+            setPaymentStatus('pending')
+            setPaymentMessage('Pago recibido. Estamos confirmándolo con Mercado Pago: se activa solo en menos de 2 minutos.')
+          }
+        })
+        .catch(() => setPaymentStatus('pending'))
     }
   }, [searchParams, createdInvitation?.slug])
-
-  const verifyPayment = async () => {
-    const code = createdInvitation?.slug
-    if (!code || !/^\d{5,20}$/.test(paymentId.trim())) {
-      setPaymentStatus('error')
-      setPaymentMessage('Ingresá el número de operación de Mercado Pago (solo números).')
-      return
-    }
-    setPaymentStatus('checking')
-    try {
-      const response = await fetch('/api/payment', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'verify', code, paymentId: paymentId.trim() }),
-      })
-      const data = await response.json()
-      if (!response.ok) throw new Error(data.error || 'No se pudo verificar')
-      if (data.status === 'paid') {
-        setPaymentStatus('paid')
-        setPaymentMessage('Pago acreditado. Tu invitación quedó activada.')
-      } else if (data.status === 'manual') {
-        setPaymentStatus('manual')
-        setPaymentMessage('No hay verificación automática configurada. Envianos el comprobante por WhatsApp con el código de tu pedido.')
-      } else {
-        setPaymentStatus(data.status || 'pending')
-        setPaymentMessage('Mercado Pago todavía no registra ese pago como aprobado. Si recién pagaste, esperá unos minutos e intentá de nuevo.')
-      }
-    } catch (error) {
-      setPaymentStatus('error')
-      setPaymentMessage(error.message)
-    }
-  }
 
   const updateField = (field, value) => {
     setFormData({ ...formData, [field]: value })
@@ -588,12 +590,39 @@ export default function CreatePage() {
                   <CountdownTimer date={formData.date} time={formData.startTime} compact />
                 </div>
               </div>
-              <div className="pt-4">
-                <button onClick={() => setShowPaymentModal(true)} className="w-full py-4 rounded-xl bg-gradient-to-r from-[#FFD700] to-[#FFA500] text-[#0a0e27] font-bold text-lg tracking-wide hover:opacity-90 transition-all shadow-lg shadow-[#FFD700]/20">
-                  Pagar y recibir mi invitación · ARS $10.000
+              <div className="pt-2 space-y-3">
+                {/* Bump: desmarcado por defecto, se elige antes de pagar */}
+                <CumpleCompletoBump
+                  checked={withBump}
+                  disabled={bumpBlocked}
+                  onChange={setWithBump}
+                />
+
+                {/* Consentimiento (Fase 4): desmarcado por defecto */}
+                <label className="flex items-start gap-3 rounded-xl border border-white/10 bg-white/[0.02] p-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={consentMarketing}
+                    onChange={(e) => setConsentMarketing(e.target.checked)}
+                    className="mt-0.5 h-4 w-4 shrink-0 accent-[#FFD700]"
+                  />
+                  <span className="text-[11px] leading-relaxed text-white/50">
+                    Quiero que me avisen del cumple del año que viene y otras novedades.
+                  </span>
+                </label>
+
+                <div className="flex items-baseline justify-between rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3">
+                  <span className="text-xs uppercase tracking-wider text-white/50">Total a pagar</span>
+                  <span className="text-2xl font-black font-bebas tracking-wide text-[#FFD700]">
+                    ARS ${total.toLocaleString('es-AR')}
+                  </span>
+                </div>
+
+                <button onClick={openPayment} className="w-full py-4 rounded-xl bg-gradient-to-r from-[#FFD700] to-[#FFA500] text-[#0a0e27] font-bold text-lg tracking-wide hover:opacity-90 transition-all shadow-lg shadow-[#FFD700]/20">
+                  Pagar y recibir mi invitación · ARS ${total.toLocaleString('es-AR')}
                 </button>
-                <p className="text-center text-white/30 text-xs mt-3">
-                  Una vez que pagues, envianos el comprobante por WhatsApp y te enviamos el link definitivo en minutos.
+                <p className="text-center text-white/30 text-xs">
+                  Pago único con Mercado Pago. Al aprobarse, la invitación se activa sola.
                 </p>
               </div>
             </motion.div>
@@ -659,9 +688,9 @@ export default function CreatePage() {
                             if (!code) return
                             setPaymentStatus('checking')
                             try {
-                              const res = await fetch('/api/payment', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'status', code }) })
+                              const res = await fetch(`/api/order?slug=${encodeURIComponent(code)}`)
                               const data = await res.json().catch(() => ({}))
-                              if (data.status === 'paid') { setPaymentStatus('paid'); setPaymentMessage('Pago acreditado. Tu invitación quedó activada.') }
+                              if (data?.order?.estado === 'ACTIVA') { setPaymentStatus('paid'); setPaymentMessage('Pago acreditado. Tu invitación quedó activada.') }
                               else { setPaymentStatus('pending'); setPaymentMessage('Todavía no figura como pagado. Si recién pagaste, esperá 1-2 minutos y tocá de nuevo. La verificación es automática.') }
                             } catch { setPaymentStatus('pending'); setPaymentMessage('No pudimos consultar el estado. Intentá de nuevo en unos segundos.') }
                           }}
@@ -674,23 +703,6 @@ export default function CreatePage() {
                           Reabrir Mercado Pago
                         </button>
                       </div>
-                    </div>
-
-                    <div className="border-t border-white/10 pt-4">
-                      <button onClick={() => setShowManualVerify(v => !v)} className="text-xs text-white/50 underline underline-offset-4 hover:text-white/80">
-                        {showManualVerify ? 'Ocultar verificación manual' : '¿Problemas? Verificación manual con número de operación'}
-                      </button>
-                      {showManualVerify && (
-                        <div className="mt-3 space-y-2">
-                          <div className="flex flex-col gap-2 sm:flex-row">
-                            <input type="text" inputMode="numeric" value={paymentId} onChange={(e) => setPaymentId(e.target.value.replace(/[^0-9]/g, ''))} placeholder="Nº de operación (solo números)" className="flex-1 rounded-lg bg-black/40 border border-white/15 px-4 py-3 text-sm text-white outline-none focus:border-[#FFD700]/60" />
-                            <button onClick={verifyPayment} disabled={paymentStatus === 'checking'} className="rounded-lg bg-white/10 border border-white/20 px-5 py-3 text-sm font-bold text-white disabled:opacity-50">
-                              {paymentStatus === 'checking' ? 'Verificando…' : 'Verificar'}
-                            </button>
-                          </div>
-                          <p className="text-white/30 text-[11px]">Solo si la verificación automática no funciona. El número está en el comprobante de Mercado Pago.</p>
-                        </div>
-                      )}
                     </div>
 
                     <a
@@ -795,46 +807,6 @@ export default function CreatePage() {
             </div>
           </div>
         )}
-
-        <AnimatePresence>
-          {showPaymentModal && (
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 flex items-center justify-center px-4">
-              <motion.div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => setShowPaymentModal(false)} />
-              <motion.div initial={{ opacity: 0, scale: 0.85, y: 40 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.9, y: 20 }} transition={{ duration: 0.4, ease: [0.25, 0.46, 0.45, 0.94] }} className="relative z-10 w-full max-w-sm">
-                <div className="bg-[#1a1f3a] rounded-2xl border border-[#FFD700]/30 overflow-hidden shadow-2xl shadow-[#FFD700]/10">
-                  <div className="relative px-6 pt-8 pb-6 text-center">
-                    <div className="absolute inset-0 bg-[#FFD700]/5" />
-                    <div className="absolute top-0 left-1/2 -translate-x-1/2 w-32 h-32 bg-[#FFD700]/20 rounded-full blur-3xl" />
-                    <div className="relative">
-                      <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ delay: 0.2, type: "spring", stiffness: 200 }} className="w-16 h-16 mx-auto mb-4 rounded-full bg-[#FFD700]/20 flex items-center justify-center border-2 border-[#FFD700]/50"><span className="text-2xl">✨</span></motion.div>
-                      <h2 className="text-xl font-bold text-white mb-2">¡Activá tu invitación!</h2>
-                      <p className="text-sm text-gray-300">{formData.childName} ya tiene su figurita lista.</p>
-                    </div>
-                  </div>
-                  <div className="px-6 pb-4">
-                    <p className="text-xs text-gray-400 uppercase tracking-wider mb-3 text-center">Para activarla definitivamente y recibir:</p>
-                    <div className="space-y-2.5">
-                      {[{ icon: "🔗", text: "Link permanente" }, { icon: "📱", text: "Confirmaciones por WhatsApp" }, { icon: "🎨", text: "Diseño premium" }, { icon: "🛟", text: "Soporte" }, { icon: "🚀", text: "Invitación lista para compartir" }].map((benefit, index) => (
-                        <motion.div key={index} initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.3 + index * 0.1 }} className="flex items-center gap-3 px-3 py-2 rounded-lg bg-[#0a0e27]/60">
-                          <span className="text-sm">{benefit.icon}</span><span className="text-sm text-gray-200">{benefit.text}</span><span className="ml-auto text-[#00D4FF]">✓</span>
-                        </motion.div>
-                      ))}
-                    </div>
-                  </div>
-                  <div className="px-6 py-4 text-center">
-                    <p className="text-xs text-gray-400 mb-1">Activala por:</p>
-                    <motion.p initial={{ scale: 0.8 }} animate={{ scale: 1 }} transition={{ delay: 0.6, type: "spring" }} className="text-3xl font-black text-[#FFD700]">ARS $10.000</motion.p>
-                    <p className="text-xs text-gray-500 mt-1">Activación única · Sin suscripción</p>
-                  </div>
-                  <div className="px-6 pb-6 space-y-3">
-                    <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} onClick={openPayment} className="w-full py-3.5 bg-[#FFD700] text-[#0a0e27] font-bold text-base rounded-xl hover:bg-[#e6c200] transition-colors shadow-lg shadow-[#FFD700]/20">Pagar y activar ahora</motion.button>
-                    <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} onClick={() => setShowPaymentModal(false)} className="w-full py-3 bg-transparent text-gray-400 font-medium text-sm rounded-xl border border-gray-700 hover:border-gray-500 hover:text-gray-300 transition-colors">Ver más tarde</motion.button>
-                  </div>
-                </div>
-              </motion.div>
-            </motion.div>
-          )}
-        </AnimatePresence>
 
         {step <= 5 && (
           <div className="fixed bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-[#050505] via-[#050505]/80 to-transparent">

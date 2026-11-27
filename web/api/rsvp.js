@@ -1,5 +1,6 @@
 import { readJson, sendJson } from '../lib/server/auth.js'
 import { readFromSheets, writeToSheets } from '../lib/server/sheets.js'
+import { toE164 } from '../lib/server/mercadopago.js'
 
 // Confirmaciones de invitados: viven en la planilla (hoja "Confirmaciones").
 // No hace falta servidor aparte ni base de datos.
@@ -24,10 +25,13 @@ export default async function handler(req, res) {
       const data = await writeToSheets('addRSVP', {
         slug,
         nombre: String(name).slice(0, 80),
-        telefono: String(phone).slice(0, 25),
+        telefono: toE164(phone).slice(0, 25),
         estado: status,
         acompanantes: Number(guests) || 0,
         notas: String(notes || '').slice(0, 300),
+        email: String(body.email || '').slice(0, 120),
+        consent_marketing: body.consent_marketing ? 'true' : 'false',
+        consent_source: body.consent_marketing ? 'rsvp' : '',
       })
       return sendJson(res, 201, { ok: true, rsvp: data, count: data?.count, notified: false })
     }
