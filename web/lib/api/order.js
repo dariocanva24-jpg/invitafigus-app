@@ -14,7 +14,12 @@ export default async function handler(req, res) {
       const slug = new URL(req.url, 'http://localhost').searchParams.get('slug') || ''
       if (!SLUG.test(slug)) return sendJson(res, 400, { error: 'Código inválido' })
       const order = await readFromSheets('getOrder', { slug })
-      return sendJson(res, 200, { order })
+      // `pagado` es lo único que la pantalla de pago debe mirar: BORRADOR y
+      // PENDIENTE significan "todavía no". Se manda calculado para que el
+      // front no tenga que adivinar cómo se llama cada estado.
+      const estado = String(order?.estado || '').toUpperCase()
+      const pagado = ['ACTIVA', 'REEMBOLSADA', 'CONTRACARGO'].includes(estado)
+      return sendJson(res, 200, { order: order ? { ...order, pagado } : null })
     }
 
     if (req.method === 'POST') {

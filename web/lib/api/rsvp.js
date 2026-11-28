@@ -13,13 +13,24 @@ export default async function handler(req, res) {
       const slug = new URL(req.url, 'http://localhost').searchParams.get('slug') || ''
       if (!SLUG.test(slug)) return sendJson(res, 400, { error: 'Slug inválido' })
       const count = await readFromSheets('rsvpCount', { slug })
-      return sendJson(res, 200, { ok: true, count })
+      return sendJson(res, 200, { ok: true, count: count?.count || count, messages: count?.messages || [] })
     }
 
     if (req.method === 'POST') {
       const body = await readJson(req)
-      const { slug, name, phone, status, guests, notes } = body
-      if (!slug || !name || !phone || !status) return sendJson(res, 400, { error: 'Faltan datos obligatorios' })
+      const { slug, name, status, guests, notes } = body
+      // El formulario manda el teléfono como "whatsapp"; antes la API solo leía
+      // "phone" y respondía "Faltan datos obligatorios" aunque estuviera todo
+      // cargado. Se aceptan los dos nombres.
+      const phone = body.phone || body.whatsapp || body.telefono || ''
+      const faltan = []
+      if (!slug) faltan.push('el código de la invitación')
+      if (!String(name || '').trim()) faltan.push('el nombre')
+      if (!String(phone || '').replace(/\D/g, '')) faltan.push('el WhatsApp')
+      if (!status) faltan.push('si vas o no vas')
+      if (faltan.length) {
+        return sendJson(res, 400, { error: `Falta ${faltan.join(', ')}`, faltan })
+      }
       if (!SLUG.test(String(slug))) return sendJson(res, 400, { error: 'Slug inválido' })
       if (!['confirmed', 'declined'].includes(status)) return sendJson(res, 400, { error: 'Estado inválido' })
       const data = await writeToSheets('addRSVP', {
@@ -33,7 +44,7 @@ export default async function handler(req, res) {
         consent_marketing: body.consent_marketing ? 'true' : 'false',
         consent_source: body.consent_marketing ? 'rsvp' : '',
       })
-      return sendJson(res, 201, { ok: true, rsvp: data, count: data?.count, notified: false })
+      return sendJson(res, 201, { ok: true, rsvp: data, count: data?.count, messages: data?.messages || [], notified: false })
     }
 
     return sendJson(res, 405, { error: 'Método no permitido' })
