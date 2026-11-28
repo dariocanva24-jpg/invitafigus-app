@@ -139,7 +139,10 @@ export function verifyWebhookSignature({ signature, requestId, dataId, secret })
   const age = Math.abs(Date.now() - Number(ts))
   if (!Number.isFinite(age) || age > 5 * 60 * 1000) return { ok: false, reason: 'ts fuera de rango' }
 
-  const manifest = `id:${dataId};request-id:${requestId || ''};ts:${ts}`
+  // Mercado Pago exige que el id vaya en MINÚSCULAS dentro del manifest cuando
+  // el data.id trae letras mayúsculas. Sin esto, la firma nunca coincide y todos
+  // los avisos se rechazan (el pedido jamás se activaría solo).
+  const manifest = `id:${String(dataId).toLowerCase()};request-id:${requestId || ''};ts:${ts}`
   const expected = crypto.createHmac('sha256', secret).update(manifest).digest('hex')
 
   const a = Buffer.from(v1, 'utf8')
@@ -149,9 +152,9 @@ export function verifyWebhookSignature({ signature, requestId, dataId, secret })
   return { ok: true }
 }
 
-// Firma para los tests: mismo manifest que valida MP.
+// Firma para los tests: mismo manifest que valida MP (id en minúsculas).
 export function signWebhook({ dataId, requestId, secret, ts = Date.now() }) {
-  const manifest = `id:${dataId};request-id:${requestId};ts:${ts}`
+  const manifest = `id:${String(dataId).toLowerCase()};request-id:${requestId};ts:${ts}`
   const v1 = crypto.createHmac('sha256', secret).update(manifest).digest('hex')
   return { header: `ts=${ts},v1=${v1}`, ts }
 }
