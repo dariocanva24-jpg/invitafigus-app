@@ -238,6 +238,15 @@ export default function CreatePage() {
     setWithBump(planRec === 'completo')
     setBumpBlocked(true)
     setStep(7)
+
+    // Se recupera el link de pago que se generó antes: así "Reabrir Mercado
+    // Pago" funciona aunque el cliente venga de la invitación en otra pestaña
+    // y esta pantalla nunca haya visto la preferencia.
+    try {
+      const recordado = JSON.parse(localStorage.getItem(`invitafigus_init_${code}`) || 'null')
+      if (recordado?.url) setLastInitPoint(recordado.url)
+    } catch {}
+
     if (status === 'success') {
       setPaymentStatus('checking')
       setPaymentMessage('Volvimos de Mercado Pago. Estamos confirmando el pago con ellos.')
@@ -340,6 +349,10 @@ export default function CreatePage() {
     }
     const goTo = (url) => {
       setLastInitPoint(url)
+      try {
+        const clave = createdInvitation?.slug || code
+        if (clave) localStorage.setItem(`invitafigus_init_${clave}`, JSON.stringify({ url, ts: Date.now() }))
+      } catch {}
       if (tab && !tab.closed) tab.location.href = url
       else window.open(url, '_blank')
     }
