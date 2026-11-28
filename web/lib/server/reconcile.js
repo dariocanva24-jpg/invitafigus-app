@@ -34,7 +34,7 @@ export async function reconcilePendingOrders({ limit = 25 } = {}) {
 
   // Solo pedidos pendientes que llegaron a tener una preferencia creada.
   const pending = orders
-    .filter((order) => ['PENDIENTE', 'pending', ''].includes(String(order.estado || '').toUpperCase()) || !order.estado)
+    .filter((order) => ['PENDIENTE', 'BORRADOR', 'pending', ''].includes(String(order.estado || '').toUpperCase()) || !order.estado)
     .filter((order) => order.order_id)
     .slice(0, limit)
 
