@@ -24,8 +24,11 @@ export async function fetchAllInvitations() {
   return request('/api/admin-proxy?action=getAll')
 }
 
-export async function fetchInvitationBySlug(slug) {
-  return request(`/api/invitations?slug=${encodeURIComponent(slug)}`)
+export async function fetchInvitationBySlug(slug, { modo = '' } = {}) {
+  // modo=compartir: devuelve también los pedidos sin pagar (con marca de agua),
+  // para que el organizador pueda pasar el link por WhatsApp antes de pagar.
+  const extra = modo ? `&modo=${encodeURIComponent(modo)}` : ''
+  return request(`/api/invitations?slug=${encodeURIComponent(slug)}${extra}`)
 }
 
 export async function activateInvitationRemote(rowIndex) {
