@@ -155,7 +155,11 @@ const fakeSheets = http.createServer((req, res) => {
       return ok({ orders: [...sheetOrders.values()], logs: sheetLogs })
     }
 
-    if (action === 'rsvpCount') {
+    if (action === 'panelsummary' || action === 'panelSummary') {
+      return ok({ totals: { responses: 0, confirmed: 0, declined: 0, guests: 0, people: 0 }, confirmed: [], declined: [], messages: [] })
+    }
+
+    if (action === 'rsvpscount' || action === 'rsvpCount') {
       return ok({ total: 0, confirmed: 0, guests: 0, messages: [] })
     }
 
@@ -671,6 +675,43 @@ console.log('\n▶ TEST 24 · Foto de portada: nunca rompe el pedido')
   })
   const enviada = [...sheetCalls].reverse().find((c) => c.action === 'createInvitation' && c.params.slug === 'cami-5-huracan')
   check('una foto que entra en la celda sí se guarda', res2.status === 201 && String(enviada?.params?.foto_url || '').startsWith('data:image/jpeg;base64,AAAA'), String(enviada?.params?.foto_url?.length))
+}
+
+console.log('\n▶ TEST 25 · Confirmar y panel requieren pago, compartir no')
+{
+  const { default: rsvp } = await import('../lib/api/rsvp.js')
+  const { default: panel } = await import('../lib/api/panel.js')
+
+  // Pedido sin pagar (BORRADOR): se puede VER, no se puede confirmar.
+  await callHandler(invitations, {
+    body: { action: 'create', invitation: { slug: 'gate-test-8-velez', childName: 'Gate', honoreeAge: 8, team: 'velez' }, plan: 'base' },
+  })
+  const ver = await callHandler(invitations, { method: 'GET', url: '/api/invitations?slug=gate-test-8-velez&modo=compartir' })
+  check('el link se puede ver sin pagar (borrador con marca de agua)', Boolean(ver.body?.borrador))
+
+  const confirmarBloqueado = await callHandler(rsvp, {
+    url: '/api/rsvp',
+    body: { slug: 'gate-test-8-velez', name: 'Invitado', whatsapp: '3884123456', status: 'confirmed' },
+  })
+  check('confirmar sin pagar → 402 SIN_PAGAR', confirmarBloqueado.status === 402 && confirmarBloqueado.body.codigo === 'SIN_PAGAR', `${confirmarBloqueado.status} ${JSON.stringify(confirmarBloqueado.body).slice(0, 120)}`)
+
+  const panelBloqueado = await callHandler(panel, {
+    body: { action: 'summary', code: 'gate-test-8-velez', key: 'x' },
+  })
+  check('panel sin pagar → 402', panelBloqueado.status === 402, String(panelBloqueado.status))
+
+  // Ahora se paga: el pedido pasa a ACTIVA y todo se abre.
+  const pedido = [...sheetOrders.values()].find((o) => o.slug === 'gate-test-8-velez')
+  pedido.estado = 'ACTIVA'
+
+  const confirmarOk = await callHandler(rsvp, {
+    url: '/api/rsvp',
+    body: { slug: 'gate-test-8-velez', name: 'Invitado', whatsapp: '3884123456', status: 'confirmed', notes: '¡Feliz cumple!' },
+  })
+  check('confirmar con la invitación activa → 201', confirmarOk.status === 201, `${confirmarOk.status} ${JSON.stringify(confirmarOk.body).slice(0, 120)}`)
+
+  const panelOk = await callHandler(panel, { body: { action: 'summary', code: 'gate-test-8-velez', key: 'x' } })
+  check('panel con la invitación activa → ya no da 402', panelOk.status !== 402, String(panelOk.status))
 }
 
 console.log('\n▶ TEST 22 · RSVP: el formulario manda "whatsapp" (no "phone")')
