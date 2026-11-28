@@ -13,10 +13,12 @@ process.env.MP_WEBHOOK_SECRET = 'secreto-de-prueba'
 process.env.APP_PUBLIC_URL = 'https://app.example.com'
 
 import http from 'node:http'
+import crypto from 'node:crypto'
 
 // ── Servidor que imita a Mercado Pago ────────────────────────────────────
 const payments = new Map()   // id -> payment
 const preferences = new Map() // id -> preference
+const merchantOrders = new Map() // id -> orden de pago
 let prefCounter = 0
 let payCounter = 0
 
@@ -47,6 +49,13 @@ const mp = http.createServer((req, res) => {
         init_point: `https://mp.example/checkout/${pref.id}`,
         sandbox_init_point: `https://sandbox.mp.example/checkout/${pref.id}`,
       }))
+    }
+
+    const moMatch = url.pathname.match(/^\/merchant_orders\/(.+)$/)
+    if (moMatch) {
+      const orden = merchantOrders.get(moMatch[1])
+      if (!orden) { res.statusCode = 404; return res.end(JSON.stringify({ message: 'not found' })) }
+      return res.end(JSON.stringify(orden))
     }
 
     if (url.pathname === '/v1/payments/search') {
@@ -91,6 +100,21 @@ const fakeSheets = http.createServer((req, res) => {
     res.setHeader('Content-Type', 'application/json')
     const ok = (data) => res.end(JSON.stringify({ success: true, data }))
 
+    if (action === 'getBySlug') {
+      const found = [...sheetOrders.values()].find((o) => o.slug === params.slug)
+      if (!found) return ok(null)
+      const estado = String(found.estado || '').toUpperCase()
+      const pagada = ['ACTIVA', 'REEMBOLSADA', 'CONTRACARGO'].includes(estado)
+      if (!pagada) {
+        // Igual que el Apps Script: sin modo=compartir un borrador NO se publica.
+        if (params.modo === 'compartir') {
+          return ok({ slug: found.slug, nombre: found.nombre || found.slug, estado, borrador: true })
+        }
+        return ok(null)
+      }
+      return ok(found)
+    }
+
     if (action === 'getOrder') {
       const found = [...sheetOrders.values()].find((o) =>
         (params.slug && o.slug === params.slug) || (params.orderId && o.order_id === params.orderId))
@@ -131,6 +155,14 @@ const fakeSheets = http.createServer((req, res) => {
       return ok({ orders: [...sheetOrders.values()], logs: sheetLogs })
     }
 
+    if (action === 'rsvpCount') {
+      return ok({ total: 0, confirmed: 0, guests: 0, messages: [] })
+    }
+
+    if (action === 'addRSVP') {
+      return ok({ saved: true, count: { total: 1, confirmed: 1, guests: Number(params.acompanantes) || 0 }, messages: [{ nombre: params.nombre, mensaje: params.notas }] })
+    }
+
     if (action === 'logWebhook') {
       sheetLogs.push(params)
       return ok({ logged: true })
@@ -142,7 +174,8 @@ const fakeSheets = http.createServer((req, res) => {
         order_id: params.order_id || '',
         plan: params.plan || 'base',
         monto: Number(params.monto) || 0,
-        estado: 'PENDIENTE',
+        estado: String(params.estado || 'PENDIENTE').toUpperCase(),
+        nombre: params.nombre || '',
         payment_id: '',
       })
       return ok({ slug: params.slug, saved: true })
@@ -307,7 +340,7 @@ console.log('\n▶ TEST 6 · Firma inválida → 401 y pedido intacto')
     headers: { 'x-signature': 'ts=' + Date.now() + ',v1=firmafalsa', 'x-request-id': 'req-123' },
   })
   check('responde 401', result.status === 401, String(result.status))
-  check('pedido sigue PENDIENTE', sheetOrders.get('mateo-10-velez').estado === 'PENDIENTE')
+  check('pedido sigue sin activar (BORRADOR)', ['PENDIENTE','BORRADOR'].includes(sheetOrders.get('mateo-10-velez').estado))
   check('quedó log rechazado_firma', sheetLogs.some((l) => l.resultado === 'rechazado_firma'))
 }
 
@@ -332,7 +365,7 @@ console.log('\n▶ TEST 8 · Monto que no coincide → NO activa')
   })
   check('responde 200 (no reintenta)', result.status === 200, String(result.status))
   check('error monto_invalido', result.body.error === 'monto_invalido', JSON.stringify(result.body))
-  check('pedido sigue PENDIENTE', sheetOrders.get('mateo-10-velez').estado === 'PENDIENTE')
+  check('pedido sigue sin activar (BORRADOR)', ['PENDIENTE','BORRADOR'].includes(sheetOrders.get('mateo-10-velez').estado))
   check('quedó log monto_invalido', sheetLogs.some((l) => l.resultado === 'monto_invalido'))
 }
 
@@ -346,7 +379,7 @@ console.log('\n▶ TEST 9 · Pago no aprobado → NO activa')
     headers: { 'x-signature': header, 'x-request-id': 'req-123' },
   })
   check('ignora el pago pending', result.body.ignored === 'pending', JSON.stringify(result.body))
-  check('pedido sigue PENDIENTE', sheetOrders.get('mateo-10-velez').estado === 'PENDIENTE')
+  check('pedido sigue sin activar (BORRADOR)', ['PENDIENTE','BORRADOR'].includes(sheetOrders.get('mateo-10-velez').estado))
 }
 
 console.log('\n▶ TEST 10 · Pedido inexistente en el external_reference')
@@ -457,7 +490,7 @@ console.log('\n▶ TEST 15 · Reconciliación activa un pago que el webhook perd
   await callHandler(checkoutPreference, { body: { slug: 'perdido-test', plan: 'completo', baseUrl: 'https://app.example.com' } })
   // El pago existe y está aprobado en MP, pero el webhook NUNCA llegó.
   makePayment({ id: 900020, amount: 14999, reference: 'IF-perdido-test-completo' })
-  check('antes de reconciliar está PENDIENTE', sheetOrders.get('perdido-test').estado === 'PENDIENTE')
+  check('antes de reconciliar está sin activar', ['PENDIENTE','BORRADOR'].includes(sheetOrders.get('perdido-test').estado))
 
   const { reconcilePendingOrders } = await import('../lib/server/reconcile.js')
   const result = await reconcilePendingOrders()
@@ -484,6 +517,276 @@ console.log('\n▶ TEST 16 · Secreto compartido con Apps Script (si está confi
 }
 
 // ── Cierre ──────────────────────────────────────────────────────────────
+// ── TEST 19 · MP manda el ts en SEGUNDOS, no en milisegundos ──
+console.log('\n▶ TEST 19 · Timestamp del webhook en segundos (como lo manda MP)')
+{
+  const { verifyWebhookSignature } = await import('../lib/server/mercadopago.js')
+  const crypto = await import('node:crypto')
+  const secret = 'clave-de-prueba-1234567890'
+  const id = '48489414707'
+
+  // Mercado Pago usa segundos epoch. Date.now() usa milisegundos.
+  const tsSegundos = Math.floor(Date.now() / 1000)
+  const firma = 'ts=' + tsSegundos + ',v1=' + crypto.createHmac('sha256', secret)
+    .update(`id:${id};request-id:req-mp;ts:${tsSegundos}`).digest('hex')
+
+  check('ts en SEGUNDOS → firma válida (era el bug: daba "ts fuera de rango")',
+    verifyWebhookSignature({ signature: firma, requestId: 'req-mp', dataId: id, secret }).ok)
+
+  const tsMs = Date.now()
+  const firmaMs = 'ts=' + tsMs + ',v1=' + crypto.createHmac('sha256', secret)
+    .update(`id:${id};request-id:req-mp;ts:${tsMs}`).digest('hex')
+  check('ts en MILISEGUNDOS → también válida',
+    verifyWebhookSignature({ signature: firmaMs, requestId: 'req-mp', dataId: id, secret }).ok)
+
+  const viejo = Math.floor(Date.now() / 1000) - 3600
+  const firmaVieja = 'ts=' + viejo + ',v1=' + crypto.createHmac('sha256', secret)
+    .update(`id:${id};request-id:req-mp;ts:${viejo}`).digest('hex')
+  check('ts de hace 1 hora (en segundos) → rechazada',
+    !verifyWebhookSignature({ signature: firmaVieja, requestId: 'req-mp', dataId: id, secret }).ok)
+}
+
+// ── TEST 20 · Firma sin request-id y con merchant_order ──
+console.log('\n▶ TEST 20 · Variantes de firma que manda Mercado Pago')
+{
+  const { verifyWebhookSignature } = await import('../lib/server/mercadopago.js')
+  const crypto = await import('node:crypto')
+  const secret = 'clave-de-prueba-1234567890'
+  const ts = Math.floor(Date.now() / 1000)
+  const id = '48489414707'
+  const hmac = (t) => crypto.createHmac('sha256', secret).update(t).digest('hex')
+
+  // A · manifest normal, con request-id
+  const conReq = `ts=${ts},v1=${hmac(`id:${id};request-id:req-x;ts:${ts}`)}`
+  check('manifest con request-id (A) válido',
+    verifyWebhookSignature({ signature: conReq, requestId: 'req-x', dataId: id, secret }).ok)
+
+  // B · MP firma con request-id VACÍO aunque el header no venga
+  const sinReq = `ts=${ts},v1=${hmac(`id:${id};request-id:;ts:${ts}`)}`
+  const rB = verifyWebhookSignature({ signature: sinReq, requestId: undefined, dataId: id, secret })
+  check('manifest con request-id vacío (B) válido', rB.ok, rB.reason)
+
+  // C · manifest sin la parte del request-id
+  const sinParte = `ts=${ts},v1=${hmac(`id:${id};ts:${ts}`)}`
+  const rC = verifyWebhookSignature({ signature: sinParte, requestId: 'req-x', dataId: id, secret })
+  check('manifest sin request-id (C) válido', rC.ok, rC.reason)
+
+  // D · COMO LO DOCUMENTA MP: con punto y coma FINAL
+  const conPunto = `ts=${ts},v1=${hmac(`id:${id};request-id:req-x;ts:${ts};`)}`
+  const rD = verifyWebhookSignature({ signature: conPunto, requestId: 'req-x', dataId: id, secret })
+  check('manifest CON ";" final (D, el de la doc de MP) válido', rD.ok, rD.reason)
+  check('el manifest D se detecta como D', rD.manifest === 'D', String(rD.manifest))
+
+  // E · con ";" final y sin request-id
+  const conPuntoB = `ts=${ts},v1=${hmac(`id:${id};request-id:;ts:${ts};`)}`
+  const rE = verifyWebhookSignature({ signature: conPuntoB, requestId: undefined, dataId: id, secret })
+  check('manifest ";" final sin request-id (E) válido', rE.ok, rE.reason)
+
+  // Sigue rechazando firmas de otro secreto
+  const otra = `ts=${ts},v1=${hmac(`id:${id};request-id:;ts:${ts}`)}`.replace(/v1=[0-9a-f]/, 'v1=deadbeef')
+  check('firma de otro secreto sigue rechazada (aunque haya 3 variantes)',
+    !verifyWebhookSignature({ signature: otra, requestId: undefined, dataId: id, secret }).ok)
+
+  // merchant_order se acepta como evento de pago
+  const { default: handler } = await import('../lib/api/webhook-mercadopago.js')
+  process.env.MP_WEBHOOK_SECRET = secret
+  const mo = `ts=${ts},v1=${hmac(`id:${id};request-id:;ts:${ts}`)}`
+  const res = await callHandler(handler, {
+    method: 'POST',
+    url: `/api/webhook-mercadopago?data.id=${id}&type=merchant_order`,
+    headers: { 'x-signature': mo },
+    body: { type: 'merchant_order', data: { id } },
+  })
+  check('merchant_order ya no se ignora, procesa la orden', res.status === 200 && !JSON.stringify(res.body).includes('ignored":"merchant_order'), JSON.stringify(res.body).slice(0, 120))
+
+  // Se restaura el secreto de las demás pruebas (evita contaminar las siguientes).
+  process.env.MP_WEBHOOK_SECRET = SECRET
+}
+
+// ── TEST 18 · Pago inexistente (simulación de MP) → 200, no 500 ──
+console.log('\n▶ TEST 21 · Activación con la firma EXACTA de la doc de MP, llegando por merchant_order')
+{
+  // 1) Se crea el pedido y la preferencia, como hace un cliente real.
+  await callHandler(invitations, {
+    body: { action: 'create', invitation: { slug: 'mateo-7-velez', childName: 'Mateo', honoreeAge: 7, team: 'velez' }, plan: 'base' },
+  })
+  await callHandler(checkoutPreference, {
+    body: { slug: 'mateo-7-velez', plan: 'base', baseUrl: 'https://app.example.com' },
+  })
+
+  // 2) El cliente paga: MP registra un pago APROBADO por 10.000.
+  makePayment({ id: 1313131313, amount: 10000, reference: 'IF-mateo-7-velez-base' })
+  merchantOrders.set('48489414707', {
+    id: '48489414707',
+    external_reference: 'IF-mateo-7-velez-base',
+    payments: [{ id: 1313131313, status: 'approved' }],
+  })
+
+  // 3) MP avisa con la firma tal cual la documenta, ";" final incluido,
+  //    y por el tópico merchant_order (que antes ignorábamos por completo).
+  const ts = Math.floor(Date.now() / 1000)
+  const id = '48489414707'
+  const secretoActual = process.env.MP_WEBHOOK_SECRET
+  const manifest = `id:${id};request-id:req-mo;ts:${ts};`
+  const v1 = crypto.createHmac('sha256', secretoActual).update(manifest).digest('hex')
+  const header = `ts=${ts},v1=${v1}`
+
+  const result = await callHandler(webhook, {
+    url: `/api/webhook-mercadopago?data.id=${id}&type=merchant_order`,
+    body: { type: 'merchant_order', data: { id } },
+    headers: { 'x-signature': header, 'x-request-id': 'req-mo' },
+  })
+
+  check('responde 200', result.status === 200, `${result.status} ${JSON.stringify(result.body)}`)
+  check('activated = true', result.body.activated === true, JSON.stringify(result.body))
+  check('el pedido quedó ACTIVA en la planilla', sheetOrders.get('mateo-7-velez').estado === 'ACTIVA', sheetOrders.get('mateo-7-velez').estado)
+  check('guardó el id del PAGO, no el de la orden', sheetOrders.get('mateo-7-velez').payment_id === '1313131313', sheetOrders.get('mateo-7-velez').payment_id)
+  check('quedó log de activación', sheetLogs.some((l) => l.resultado === 'activada' && l.order_id === 'IF-mateo-7-velez-base'))
+}
+
+console.log('\n▶ TEST 24 · Foto de portada: nunca rompe el pedido')
+{
+  const { default: invitations } = await import('../lib/api/invitations.js')
+
+  // Una foto de celular sin comprimir ronda los 3 MB en base64: no entra en
+  // una celda de Google Sheets (50.000 caracteres) y hacía fallar el guardado
+  // del pedido entero. Ahora se descarta la foto, no el pedido.
+  const gigante = 'data:image/jpeg;base64,' + 'A'.repeat(120000)
+  const res = await callHandler(invitations, {
+    body: {
+      action: 'create',
+      invitation: { slug: 'tomi-9-sanlorenzo', childName: 'Tomi', honoreeAge: 9, team: 'san-lorenzo', honoreePhoto: gigante },
+      plan: 'base',
+    },
+  })
+  check('el pedido se guarda igual', res.status === 201 && res.body.saved === true, `${res.status} ${JSON.stringify(res.body).slice(0, 120)}`)
+
+  const chica = 'data:image/jpeg;base64,' + 'A'.repeat(30000)
+  const res2 = await callHandler(invitations, {
+    body: {
+      action: 'create',
+      invitation: { slug: 'cami-5-huracan', childName: 'Cami', honoreeAge: 5, team: 'huracan', honoreePhoto: chica },
+      plan: 'base',
+    },
+  })
+  const enviada = [...sheetCalls].reverse().find((c) => c.action === 'createInvitation' && c.params.slug === 'cami-5-huracan')
+  check('una foto que entra en la celda sí se guarda', res2.status === 201 && String(enviada?.params?.foto_url || '').startsWith('data:image/jpeg;base64,AAAA'), String(enviada?.params?.foto_url?.length))
+}
+
+console.log('\n▶ TEST 22 · RSVP: el formulario manda "whatsapp" (no "phone")')
+{
+  const { default: rsvp } = await import('../lib/api/rsvp.js')
+  const sheetRsvp = []
+
+  // Antes la API leía solo body.phone y respondía "Faltan datos obligatorios"
+  // aunque el formulario mandara todo. El formulario manda `whatsapp`.
+  const ok = await callHandler(rsvp, {
+    url: '/api/rsvp',
+    body: { slug: 'gaby-25-boca-juniors', name: 'Abuela Marta', whatsapp: '3884123456', status: 'confirmed', guests: 1, notes: '¡Felicidades Thiago! Que cumplas muchos más ⚽' },
+  })
+  check('acepta el campo whatsapp sin devolver "Faltan datos"', ok.status === 201, `${ok.status} ${JSON.stringify(ok.body).slice(0, 120)}`)
+  check('devuelve los mensajes de los invitados', Array.isArray(ok.body.messages), JSON.stringify(ok.body).slice(0, 120))
+
+  const falta = await callHandler(rsvp, {
+    url: '/api/rsvp',
+    body: { slug: 'gaby-25-boca-juniors', name: 'Sin teléfono', status: 'confirmed' },
+  })
+  check('si falta el teléfono lo dice claro y nombra el campo', falta.status === 400 && /whatsapp/i.test(falta.body.error || ''), JSON.stringify(falta.body))
+}
+
+console.log('\n▶ TEST 23 · Pedido sin pagar: se comparte igual, sin filtrar la clave')
+{
+  const { default: invitations } = await import('../lib/api/invitations.js')
+
+  // El pedido nace BORRADOR: debe poder verse en modo=compartir.
+  await callHandler(invitations, {
+    body: { action: 'create', invitation: { slug: 'lola-6-racing', childName: 'Lola', honoreeAge: 6, team: 'racing' }, plan: 'base' },
+  })
+  const creado = [...sheetOrders.values()].find((o) => o.slug === 'lola-6-racing')
+  check('el pedido nace en BORRADOR (se puede compartir)', creado?.estado === 'BORRADOR', String(creado?.estado))
+
+  const compartir = await callHandler(invitations, {
+    method: 'GET',
+    url: '/api/invitations?slug=lola-6-racing&modo=compartir',
+  })
+  check('modo=compartir devuelve la invitación sin pagar', Boolean(compartir.body?.borrador), JSON.stringify(compartir.body).slice(0, 120))
+  check('no expone la clave del panel', !JSON.stringify(compartir.body).includes('clave'), JSON.stringify(compartir.body).slice(0, 120))
+
+  const normal = await callHandler(invitations, { method: 'GET', url: '/api/invitations?slug=lola-6-racing' })
+  check('sin modo=compartir un borrador no se publica (null)', normal.body === null, JSON.stringify(normal.body).slice(0, 80))
+}
+
+console.log('\n▶ TEST 18 · Simulación de notificación de Mercado Pago')
+{
+  // Mercado Pago, con el botón "Simular notificación", firma bien pero manda
+  // un id inventado. La firma pasa y MP responde 404. Antes contestábamos 500,
+  // el panel decía "la prueba de esta URL falló" y MP reintentaba cada 15 min.
+  const { verifyWebhookSignature } = await import('../lib/server/mercadopago.js')
+  const crypto = await import('node:crypto')
+  const secret = 'clave-de-prueba-1234567890'
+  const ts = Date.now()
+  const id = '23425523'
+  const signature = 'ts=' + ts + ',v1=' + crypto.createHmac('sha256', secret)
+    .update(`id:${id};request-id:req-sim;ts:${ts}`).digest('hex')
+
+  check('la simulación con firma válida pasa el primer control',
+    verifyWebhookSignature({ signature, requestId: 'req-sim', dataId: id, secret }).ok)
+
+  process.env.MP_WEBHOOK_SECRET = secret
+  process.env.MP_ACCESS_TOKEN = 'token-falso-para-que-falle-la-lectura'
+
+  const webhook = (await import('../lib/api/webhook-mercadopago.js')).default
+  const res = await callHandler(webhook, {
+    method: 'POST',
+    url: '/api/webhook-mercadopago?data.id=' + id + '&type=payment',
+    headers: { 'x-signature': signature, 'x-request-id': 'req-sim' },
+    body: { type: 'payment', data: { id } },
+  })
+
+  check('no responde 500 (antes rompía la prueba del panel)', res.status !== 500, `status ${res.status}`)
+  check('responde 200 con el motivo', res.status === 200, `status ${res.status}`)
+  check('el motivo dice que el pago no existe',
+    /inexistente|no_existe/i.test(JSON.stringify(res.body)), JSON.stringify(res.body).slice(0, 100))
+
+  process.env.MP_WEBHOOK_SECRET = SECRET
+}
+
+// ── TEST 17 · Firma del webhook: id en minúsculas + secreto con comillas ──
+console.log('\n▶ TEST 17 · Firma del webhook tal como la manda Mercado Pago')
+{
+  const { verifyWebhookSignature } = await import('../lib/server/mercadopago.js')
+  const crypto = await import('node:crypto')
+
+  const sign = (id, ts, secret, reqId = 'req-1') =>
+    'ts=' + ts + ',v1=' + crypto.createHmac('sha256', secret)
+      .update(`id:${String(id).toLowerCase()};request-id:${reqId};ts:${ts}`)
+      .digest('hex')
+
+  const ts = Date.now()
+  const secret = 'clave-de-prueba-1234567890'
+
+  // Mercado Pago manda el id en minúsculas en el manifest.
+  check('id en minúsculas → firma válida',
+    verifyWebhookSignature({ signature: sign('900006', ts, secret), requestId: 'req-1', dataId: '900006', secret }).ok)
+
+  // Aunque el data.id llegue en mayúsculas, tiene que seguir validando.
+  check('data.id en MAYÚSCULAS → también valida',
+    verifyWebhookSignature({ signature: sign('900006', ts, secret), requestId: 'req-1', dataId: '900006'.toUpperCase(), secret }).ok)
+
+  check('firma de otro secreto → rechazada',
+    !verifyWebhookSignature({ signature: sign('900006', ts, 'otro-secreto'), requestId: 'req-1', dataId: '900006', secret }).ok)
+
+  const viejo = Date.now() - 10 * 60 * 1000
+  check('firma vieja (10 min) → rechazada',
+    !verifyWebhookSignature({ signature: sign('900006', viejo, secret), requestId: 'req-1', dataId: '900006', secret }).ok)
+
+  // El handler limpia comillas y espacios del secreto pegado en Vercel.
+  const webhook = (await import('../lib/api/webhook-mercadopago.js')).default
+  const res = await callHandler(webhook, { method: 'GET', url: '/api/webhook-mercadopago', headers: {} })
+  check('GET /webhook-mercadopago responde diagnóstico', res.status === 200 && 'secretoConfigurado' in res.body, JSON.stringify(res.body).slice(0, 120))
+  check('el diagnóstico NO expone el secreto', !JSON.stringify(res.body).includes('MP_WEBHOOK_SECRET') && !('webhookSecret' in res.body), JSON.stringify(res.body).slice(0, 120))
+}
+
 console.log(`\n${'─'.repeat(60)}`)
 console.log(`RESULTADO: ${passed} pruebas OK · ${failed} fallas`)
 console.log('─'.repeat(60))
