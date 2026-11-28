@@ -59,6 +59,12 @@ function customShield(name, initials) {
 
 // En papel las animaciones no sirven: la figurita tiene que estar quieta y
 // visible desde el primer instante. `still` la deja dibujada y sin movimiento.
+// Imagen de respaldo dibujada en el propio archivo (SVG en datos, ~1,4 KB).
+// Antes se usaba un CDN de terceros (si se caía, se caía la demo) y después
+// un .webp en public/ (que había que subir aparte y se podía olvidar). Así
+// el respaldo viaja con el código: no depende de nada externo.
+const PLACEHOLDER = 'data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20400%20500%22%20width%3D%22400%22%20height%3D%22500%22%3E%3Cdefs%3E%3ClinearGradient%20id%3D%22g%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%220%22%20y2%3D%221%22%3E%3Cstop%20offset%3D%220%22%20stop-color%3D%22%2316224f%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%230a0e27%22%2F%3E%3C%2FlinearGradient%3E%3C%2Fdefs%3E%3Crect%20width%3D%22400%22%20height%3D%22500%22%20fill%3D%22url%28%23g%29%22%2F%3E%3Ccircle%20cx%3D%22200%22%20cy%3D%22205%22%20r%3D%2272%22%20fill%3D%22%23FFD700%22%20opacity%3D%220.18%22%2F%3E%3Ccircle%20cx%3D%22200%22%20cy%3D%22205%22%20r%3D%2252%22%20fill%3D%22%23FFD700%22%20opacity%3D%220.9%22%2F%3E%3Ccircle%20cx%3D%22200%22%20cy%3D%22196%22%20r%3D%2220%22%20fill%3D%22%230a0e27%22%2F%3E%3Cpath%20d%3D%22M160%20232a40%2040%200%200%201%2080%200z%22%20fill%3D%22%230a0e27%22%2F%3E%3Cpath%20d%3D%22M118%20430c14-62%2044-96%2082-96s68%2034%2082%2096z%22%20fill%3D%22%23FFD700%22%20opacity%3D%220.85%22%2F%3E%3Ccircle%20cx%3D%22200%22%20cy%3D%22342%22%20r%3D%2226%22%20fill%3D%22%230a0e27%22%2F%3E%3Ctext%20x%3D%22200%22%20y%3D%22470%22%20font-family%3D%22Arial%2CHelvetica%2Csans-serif%22%20font-size%3D%2217%22%20font-weight%3D%22bold%22%20fill%3D%22%23FFD700%22%20text-anchor%3D%22middle%22%20opacity%3D%220.75%22%3ETU%20FOTO%20AC%C3%81%3C%2Ftext%3E%3C%2Fsvg%3E'
+
 export default function PlayerCard({ event, still = false }) {
   const allTeams = useAllTeams()
   const findTeam = (id) => getTeamById(id) || allTeams.find((team) => team.id === id) || null
@@ -156,14 +162,14 @@ export default function PlayerCard({ event, still = false }) {
             </div>
 
             <img
-              src={event?.honoreePhoto || '/ejemplos/placeholder.webp'}
+              src={event?.honoreePhoto || PLACEHOLDER}
               alt={displayName}
               className="absolute inset-0 w-full h-full object-cover object-top"
               onError={(e) => {
                 // Si la foto del cliente falla, se cae en una imagen propia:
                 // nunca en un CDN de terceros (si se cae, se cae la demo).
-                if (e.target.src.endsWith('/ejemplos/placeholder.webp')) return
-                e.target.src = '/ejemplos/placeholder.webp'
+                if (e.target.src === PLACEHOLDER) return
+                e.target.src = PLACEHOLDER
               }}
             />
             
