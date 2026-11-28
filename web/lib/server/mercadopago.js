@@ -100,7 +100,11 @@ export async function getPayment(paymentId) {
   })
   const data = await response.json().catch(() => ({}))
   if (!response.ok) {
-    throw new Error(`No se pudo leer el pago ${paymentId}: ${data.message || response.status}`)
+    const error = new Error(`No se pudo leer el pago ${paymentId}: ${data.message || response.status}`)
+    // Se guarda el status real de MP: el webhook distingue "ese pago no existe"
+    // (404, hay que responder 200) de una caída de MP (500, hay que reintentar).
+    error.status = response.status
+    throw error
   }
   return {
     id: String(data.id),
