@@ -4,13 +4,16 @@ import { Check, X, Plus, Minus, Loader2, MessageCircle, Users } from 'lucide-rea
 import { whatsappLinks } from '../../config/whatsapp'
 import GuestMessages from './GuestMessages'
 
-export default function RSVPForm({ event }) {
+export default function RSVPForm({ event, bloqueadoPorPago = false, onIrAPagar }) {
   const [form, setForm] = useState({ name: '', whatsapp: '', status: 'confirmed', guests: 0, notes: '' })
   const [submitting, setSubmitting] = useState(false)
   const [submitted, setSubmitted] = useState(false)
   const [error, setError] = useState('')
   const [count, setCount] = useState({ total: 0, confirmed: 0, guests: 0 })
   const [notified, setNotified] = useState(false)
+  // Confirmar es lo que se compra: si el pedido no está activo, el formulario
+  // se muestra bloqueado (se ve la figurita, no se puede confirmar).
+  const [bloqueado, setBloqueado] = useState(bloqueadoPorPago)
   // Mensajes que dejan los invitados: la planilla ya los devuelve con el conteo.
   const [messages, setMessages] = useState([])
   // El navegador bloquea el envío cuando el teléfono no parece válido, pero en
@@ -40,6 +43,7 @@ export default function RSVPForm({ event }) {
   }
 
   useEffect(() => { loadCount() }, [slug])
+  useEffect(() => { if (bloqueadoPorPago) setBloqueado(true) }, [bloqueadoPorPago])
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -62,6 +66,11 @@ export default function RSVPForm({ event }) {
         body: JSON.stringify({ ...form, slug }),
       })
       const data = await response.json().catch(() => ({}))
+      if (response.status === 402 || data.codigo === 'SIN_PAGAR') {
+        setBloqueado(true)
+        setError('')
+        return
+      }
       if (!response.ok) throw new Error(data.error || 'No se pudo guardar la respuesta')
       setNotified(Boolean(data.notified))
       if (data.count) setCount(data.count)
@@ -144,6 +153,46 @@ export default function RSVPForm({ event }) {
           </button>
         </div>
       </motion.div>
+    )
+  }
+
+  // ── Confirmaciones cerradas hasta el pago ─────────────────────────────
+  // El link se comparte gratis (el invitado ve la figurita), pero confirmar
+  // y ver la lista de invitados es lo que se compra.
+  if (bloqueado) {
+    const yaConfirmaron = Number(count?.confirmed || 0)
+    return (
+      <div className="space-y-4">
+        <div className="relative overflow-hidden rounded-3xl border border-[#FFD700]/40 bg-gradient-to-b from-[#101a3a] to-[#0a0e27] p-6 text-center">
+          <div className="mx-auto mb-3 grid h-14 w-14 place-items-center rounded-full bg-[#FFD700]/15 text-2xl">🔒</div>
+          <h3 className="text-2xl font-black font-bebas tracking-wider text-white">Confirmaciones cerradas</h3>
+          <p className="mt-2 text-sm leading-relaxed text-white/60">
+            Esta invitación todavía no está activada. Se abre apenas el organizador confirme el pago.
+          </p>
+
+          {/* Argumento comercial: mostrar el número real que ya hay. */}
+          {yaConfirmaron > 0 && (
+            <p className="mt-4 rounded-xl border border-[#FFD700]/30 bg-[#FFD700]/10 px-4 py-3 text-sm font-bold text-[#FFD700]">
+              {yaConfirmaron === 1 ? '1 familia ya confirmó.' : `${yaConfirmaron} familias ya confirmaron.`}
+              <br />
+              <span className="text-xs font-normal text-white/60">Activá la invitación para ver quiénes son.</span>
+            </p>
+          )}
+
+          <p className="mt-4 text-[11px] leading-relaxed text-white/35">
+            ¿Sos el organizador? Entrá a tu panel y activá la invitación desde ahí.
+          </p>
+          {onIrAPagar && (
+            <button
+              onClick={onIrAPagar}
+              className="mt-4 w-full rounded-full bg-[#FFD700] py-3 text-sm font-black uppercase tracking-wider text-[#0a0e27]"
+            >
+              Activar la invitación
+            </button>
+          )}
+        </div>
+        {messages.length > 0 && <GuestMessages messages={messages} />}
+      </div>
     )
   }
 

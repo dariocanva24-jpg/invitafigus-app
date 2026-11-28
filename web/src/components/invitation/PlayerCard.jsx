@@ -156,13 +156,15 @@ export default function PlayerCard({ event, still = false }) {
             </div>
 
             <img
-              src={
-                event?.honoreePhoto ||
-                'https://images.unsplash.com/photo-1503919545889-aef636e10ad4?w=400&h=500&fit=crop'
-              }
+              src={event?.honoreePhoto || '/ejemplos/placeholder.webp'}
               alt={displayName}
               className="absolute inset-0 w-full h-full object-cover object-top"
-              onError={(e) => { e.target.src = 'https://images.unsplash.com/photo-1503919545889-aef636e10ad4?w=400&h=500&fit=crop' }}
+              onError={(e) => {
+                // Si la foto del cliente falla, se cae en una imagen propia:
+                // nunca en un CDN de terceros (si se cae, se cae la demo).
+                if (e.target.src.endsWith('/ejemplos/placeholder.webp')) return
+                e.target.src = '/ejemplos/placeholder.webp'
+              }}
             />
             
             <div className="absolute bottom-0 left-0 right-0 h-1/2"
