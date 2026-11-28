@@ -140,8 +140,14 @@ export function verifyWebhookSignature({ signature, requestId, dataId, secret })
   if (!ts || !v1) return { ok: false, reason: 'x-signature incompleta' }
 
   // Rechaza eventos viejos (5 minutos) para evitar replays.
-  const age = Math.abs(Date.now() - Number(ts))
-  if (!Number.isFinite(age) || age > 5 * 60 * 1000) return { ok: false, reason: 'ts fuera de rango' }
+  // Mercado Pago manda el ts en SEGUNDOS (ej: 1704908010). Si se lo compara
+  // contra Date.now() (milisegundos) la diferencia da ~1,7 billones y TODO
+  // aviso real cae en "ts fuera de rango". Se acepta en las dos unidades.
+  const tsNum = Number(ts)
+  if (!Number.isFinite(tsNum)) return { ok: false, reason: 'ts inválido' }
+  const tsMs = tsNum < 1e12 ? tsNum * 1000 : tsNum
+  const age = Math.abs(Date.now() - tsMs)
+  if (age > 5 * 60 * 1000) return { ok: false, reason: 'ts fuera de rango' }
 
   // Mercado Pago exige que el id vaya en MINÚSCULAS dentro del manifest cuando
   // el data.id trae letras mayúsculas. Sin esto, la firma nunca coincide y todos
