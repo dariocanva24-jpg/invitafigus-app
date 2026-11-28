@@ -1,6 +1,6 @@
 import { readJson, sendJson } from '../server/auth.js'
 import { readFromSheets, writeToSheets, writeToSheetsWithRetry } from '../server/sheets.js'
-import { getPayment, verifyWebhookSignature, mpConfig } from '../server/mercadopago.js'
+import { getPayment, getMerchantOrder, verifyWebhookSignature, mpConfig } from '../server/mercadopago.js'
 import { isAllowedAmount, planForAmount } from '../server/pricing.js'
 
 // POST /api/webhook-mercadopago
@@ -63,15 +63,37 @@ export default async function handler(req, res) {
   }
 
   // Solo nos interesan eventos de pago. Los demás se aceptan y se ignoran.
-  if (type && type !== 'payment') {
-    return sendJson(res, 200, { ok: true, ignored: type })
-  }
+  const ES_PAGO = !type || type === 'payment' || type === 'merchant_order'
+  if (!ES_PAGO) return sendJson(res, 200, { ok: true, ignored: type })
   if (!dataId) return sendJson(res, 200, { ok: true, ignored: 'sin data.id' })
+
+  // Checkout Pro a veces avisa con merchant_order (la "orden" que contiene el
+  // pago). Se resuelve el pago real antes de seguir.
+  let idDelPago = dataId
+  if (type === 'merchant_order') {
+    try {
+      const orden = await getMerchantOrder(dataId)
+      if (!orden.payment_id) {
+        await logEvent({
+          payment_id: dataId, status: 'orden_sin_pago', firma_ok: 'SI', monto_ok: '',
+          resultado: 'orden_sin_pago', detalle: 'La orden todavia no tiene pagos',
+        })
+        return sendJson(res, 200, { ok: true, ignored: 'orden_sin_pago' })
+      }
+      idDelPago = orden.payment_id
+    } catch (error) {
+      await logEvent({
+        payment_id: dataId, status: 'error_orden', firma_ok: 'SI', monto_ok: '',
+        resultado: 'error', detalle: error.message,
+      })
+      return sendJson(res, 200, { ok: true, ignored: 'orden_ilegible' })
+    }
+  }
 
   // ── 2. Releer el pago real en MP ──────────────────────────────────────
   let payment
   try {
-    payment = await getPayment(dataId)
+    payment = await getPayment(idDelPago)
   } catch (error) {
     // 404 = ese pago no existe en Mercado Pago. Pasa siempre con el botón
     // "Simular notificación" del panel (manda un id inventado) y también si
