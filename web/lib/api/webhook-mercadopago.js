@@ -16,10 +16,27 @@ import { isAllowedAmount, planForAmount } from '../server/pricing.js'
 const REVERSED_STATUSES = ['refunded', 'charged_back', 'cancelled']
 
 export default async function handler(req, res) {
+  // Diagnóstico: GET a esta ruta dice si el webhook está listo, sin exponer nada.
+  if (req.method === 'GET') {
+    const config = mpConfig()
+    const secreto = String(config.webhookSecret || '').trim().replace(/^["']|["']$/g, '')
+    return sendJson(res, 200, {
+      ruta: '/api/webhook-mercadopago',
+      metodo: 'Mercado Pago manda POST',
+      accesoTokenConfigurado: Boolean(config.accessToken),
+      secretoConfigurado: Boolean(secreto),
+      secretoLargo: secreto.length,
+      urlPublicaConfigurada: Boolean(config.appUrl),
+      nota: 'Si secretoConfigurado es false, todos los avisos se rechazan y los pedidos nunca se activan solos.',
+    })
+  }
+
   if (req.method !== 'POST') return sendJson(res, 405, { error: 'Método no permitido' })
 
   const startedAt = Date.now()
-  const { webhookSecret } = mpConfig()
+  // El secreto se pega a mano en Vercel: se limpian espacios, saltos de línea
+  // y comillas que se cuelan al copiar. Una comilla de más = firma inválida.
+  const webhookSecret = String(mpConfig().webhookSecret || '').trim().replace(/^["']|["']$/g, '')
 
   let body = {}
   try { body = await readJson(req) } catch { body = {} }
@@ -36,6 +53,8 @@ export default async function handler(req, res) {
   const check = verifyWebhookSignature({ signature, requestId, dataId, secret: webhookSecret })
   if (!check.ok) {
     console.warn('[webhook] firma inválida:', check.reason, { dataId, type })
+    // Pista en el header: permite ver el motivo desde afuera sin abrir logs.
+    res.setHeader('x-invitafigus-webhook', `firma:${String(check.reason).replace(/[^a-zA-Z0-9 _:-]/g, '')}`)
     await logEvent({
       payment_id: dataId, status: type, firma_ok: 'NO', monto_ok: '',
       resultado: 'rechazado_firma', detalle: check.reason,
