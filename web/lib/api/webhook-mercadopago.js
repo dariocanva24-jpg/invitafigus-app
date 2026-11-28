@@ -73,12 +73,25 @@ export default async function handler(req, res) {
   try {
     payment = await getPayment(dataId)
   } catch (error) {
+    // 404 = ese pago no existe en Mercado Pago. Pasa siempre con el botón
+    // "Simular notificación" del panel (manda un id inventado) y también si
+    // MP reintenta un aviso de una preferencia que nunca se pagó.
+    // Se responde 200 y se anota: reintentar no cambia nada y, si no, el
+    // panel marca la URL como rota y MP reintenta cada 15 min para siempre.
+    if (error.status === 404 || /404|not found/i.test(String(error.message))) {
+      console.warn('[webhook] pago inexistente en MP:', dataId)
+      await logEvent({
+        payment_id: dataId, status: 'no_existe', firma_ok: 'SI', monto_ok: '',
+        resultado: 'pago_inexistente', detalle: 'MP no tiene ese id (simulacion o preferencia impaga)',
+      })
+      return sendJson(res, 200, { ok: true, ignored: 'pago_inexistente' })
+    }
     console.error('[webhook] no se pudo leer el pago:', error.message)
     await logEvent({
       payment_id: dataId, status: 'error_lectura', firma_ok: 'SI', monto_ok: '',
       resultado: 'error', detalle: error.message,
     })
-    // 500 para que MP reintente más tarde.
+    // 500 para que MP reintente más tarde (falla de red o de MP, no del pago).
     return sendJson(res, 500, { error: 'No se pudo verificar el pago' })
   }
 
