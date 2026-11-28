@@ -117,6 +117,29 @@ export async function getPayment(paymentId) {
   }
 }
 
+// Checkout Pro también puede avisar con type=merchant_order (una "orden de pago"
+// que contiene el pago). Se lee la orden y se saca el pago aprobado.
+export async function getMerchantOrder(merchantOrderId) {
+  const response = await fetch(`${API}/merchant_orders/${encodeURIComponent(merchantOrderId)}`, {
+    headers: authHeaders(),
+    cache: 'no-store',
+  })
+  const data = await response.json().catch(() => ({}))
+  if (!response.ok) {
+    const error = new Error(`No se pudo leer la orden ${merchantOrderId}: ${data.message || response.status}`)
+    error.status = response.status
+    throw error
+  }
+  const pagos = Array.isArray(data.payments) ? data.payments : []
+  const aprobado = pagos.find((p) => p.status === 'approved') || pagos[0]
+  return {
+    id: String(data.id),
+    external_reference: data.external_reference || '',
+    payment_id: aprobado ? String(aprobado.id) : '',
+    payment_status: aprobado ? aprobado.status : '',
+  }
+}
+
 // ───────────────────────────────────────────────────────────────────────────
 // Validación de la firma del webhook.
 // MP manda: x-signature: ts=<ms>,v1=<hmac>
@@ -152,14 +175,26 @@ export function verifyWebhookSignature({ signature, requestId, dataId, secret })
   // Mercado Pago exige que el id vaya en MINÚSCULAS dentro del manifest cuando
   // el data.id trae letras mayúsculas. Sin esto, la firma nunca coincide y todos
   // los avisos se rechazan (el pedido jamás se activaría solo).
-  const manifest = `id:${String(dataId).toLowerCase()};request-id:${requestId || ''};ts:${ts}`
-  const expected = crypto.createHmac('sha256', secret).update(manifest).digest('hex')
+  // Mercado Pago arma el manifest con el request-id, pero en algunos avisos
+  // (reintentos, merchant_order) ese header no viene y lo firma vacío — o
+  // directamente sin esa parte. Se prueban las tres formas conocidas.
+  // No baja la seguridad: en todas hace falta el secreto.
+  const lowId = String(dataId).toLowerCase()
+  const manifests = [
+    { nombre: 'A', texto: `id:${lowId};request-id:${requestId || ''};ts:${ts}` },
+    { nombre: 'B', texto: `id:${lowId};request-id:;ts:${ts}` },
+    { nombre: 'C', texto: `id:${lowId};ts:${ts}` },
+  ]
 
-  const a = Buffer.from(v1, 'utf8')
-  const b = Buffer.from(expected, 'utf8')
-  if (a.length !== b.length) return { ok: false, reason: 'firma no coincide' }
-  if (!crypto.timingSafeEqual(a, b)) return { ok: false, reason: 'firma no coincide' }
-  return { ok: true }
+  for (const manifest of manifests) {
+    const expected = crypto.createHmac('sha256', secret).update(manifest.texto).digest('hex')
+    const a = Buffer.from(v1, 'utf8')
+    const b = Buffer.from(expected, 'utf8')
+    if (a.length === b.length && crypto.timingSafeEqual(a, b)) {
+      return { ok: true, manifest: manifest.nombre }
+    }
+  }
+  return { ok: false, reason: `firma no coincide (probado A/B/C · request-id ${requestId ? 'presente' : 'ausente'})` }
 }
 
 // Firma para los tests: mismo manifest que valida MP (id en minúsculas).
