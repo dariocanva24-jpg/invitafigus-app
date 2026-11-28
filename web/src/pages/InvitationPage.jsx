@@ -24,6 +24,7 @@ import CountdownTimer from "../components/invitation/CountdownTimer";
 import SparkleField from "../components/brand/SparkleField.jsx";
 import RSVPForm from "../components/invitation/RSVPForm";
 import ShareButtons from "../components/invitation/ShareButtons";
+import Watermark from "../components/invitation/Watermark";
 
 
 // La demo siempre queda en una fecha futura para que el contador se vea completo.
@@ -43,6 +44,8 @@ const InvitationPage = () => {
   // Si el link venció (12 meses), guardamos la fecha para avisar con claridad.
   const [expired, setExpired] = useState(null);
   const [error, setError] = useState(null);
+  // Pedido sin pagar: se ve completo pero con marca de agua y aviso.
+  const [esBorrador, setEsBorrador] = useState(false);
 
   const [showCard, setShowCard] = useState(false);
   const [albumOpened, setAlbumOpened] = useState(false);
@@ -53,7 +56,8 @@ const InvitationPage = () => {
     const loadInvitation = async () => {
       setLoading(true);
       try {
-        const remoteEvent = await fetchInvitationBySlug(slug);
+        // modo=compartir → el pedido puede estar sin pagar y se muestra igual
+        const remoteEvent = await fetchInvitationBySlug(slug, { modo: 'compartir' });
 
         // Link vencido (12 meses): aviso con salida, sin tratarlo como error.
         if (remoteEvent && remoteEvent.expired) {
@@ -106,9 +110,11 @@ const InvitationPage = () => {
             contactWhatsApp: telefono,
             honoreePhoto: validPhoto(remoteEvent.foto_url) || validPhoto(fotoFromAdmin) || localInv?.honoreePhoto || (slug === 'thiago-8-argentina' ? '/ejemplos/thiago.webp' : ''),
             message: mensaje,
-            status: remoteEvent.estado?.toLowerCase(),
+            status: String(remoteEvent.estado || '').toLowerCase(),
             views: remoteEvent.views,
+            borrador: Boolean(remoteEvent.borrador),
           };
+          setEsBorrador(Boolean(remoteEvent.borrador));
           setEvent(withDemoDate(mappedEvent, slug));
           
           incrementViewsRemote(slug).catch(() => {});
@@ -251,16 +257,57 @@ const InvitationPage = () => {
       </div>
 
       <div className="relative z-20 max-w-md mx-auto px-4 pt-4">
+        {/* Volver al paso donde estabas. Si es tu propia invitación sin pagar
+            volvés al pago; si ya está paga, a tu panel. Para un INVITADO
+            (alguien que recibió el link) vuelve a la portada: antes les
+            mandaba al inicio y se perdían. */}
         <button
-          onClick={() => navigate('/')}
+          onClick={() => {
+            const esMiPedido = (() => {
+              try {
+                return Boolean(localStorage.getItem(`invitafigus_pedido_${slug}`))
+                || Boolean(localStorage.getItem(`invitafigus_panel_${slug}`))
+              } catch { return false }
+            })();
+            if (esBorrador && esMiPedido) navigate(`/crear?status=pending&code=${encodeURIComponent(slug)}`);
+            else if (!esBorrador && esMiPedido) navigate(`/panel/${slug}`);
+            else navigate('/');
+          }}
           className="flex items-center gap-2 text-white/50 hover:text-white/80 transition-colors text-sm"
         >
           <ArrowLeft size={16} />
-          Volver al inicio
+          {esBorrador ? 'Volver al pago' : 'Volver'}
         </button>
       </div>
 
       <div className="relative z-10 max-w-md mx-auto px-4 py-4 pb-24">
+        {esBorrador && (
+          <div className="mb-4 rounded-2xl border border-[#FFD700]/40 bg-[#FFD700]/10 p-4 text-center">
+            <p className="text-[11px] font-black uppercase tracking-widest text-[#FFD700]">Vista previa · sin pagar</p>
+            <p className="mt-1 text-xs leading-relaxed text-white/60">
+              Esta invitación se ve así hasta que se acredite el pago. Podés compartirla igual:
+              tus invitados ya pueden confirmar. La marca de agua desaparece sola al pagar.
+            </p>
+            <div className="mt-3 flex gap-2">
+              <button
+                onClick={() => navigate(`/crear?status=pending&code=${encodeURIComponent(slug)}`)}
+                className="flex-1 rounded-lg bg-[#FFD700] px-3 py-2 text-xs font-bold text-[#0a0e27]"
+              >
+                Ir a pagar
+              </button>
+              <button
+                onClick={() => {
+                  const url = `${window.location.origin}/invitacion/${slug}`;
+                  navigator.clipboard.writeText(url).catch(() => {});
+                  alert('Link copiado: ' + url);
+                }}
+                className="flex-1 rounded-lg border border-white/20 px-3 py-2 text-xs font-semibold text-white/80"
+              >
+                Copiar link
+              </button>
+            </div>
+          </div>
+        )}
         <AnimatePresence>
           {!albumOpened && (
             <motion.div
@@ -272,6 +319,7 @@ const InvitationPage = () => {
                 honoreeName={event.childName || event.honoreeName} 
                 team={event.team}
                 customTeamName={event.customTeamName}
+                photo={event.honoreePhoto}
                 onOpen={handleAlbumOpen}
               />
             </motion.div>
@@ -286,7 +334,10 @@ const InvitationPage = () => {
               transition={{ duration: 0.8, ease: [0.25, 0.46, 0.45, 0.94] }}
               className="mb-6"
             >
-              <PlayerCard event={event} />
+              <div className="relative">
+                <PlayerCard event={event} />
+                {esBorrador && <Watermark />}
+              </div>
             </motion.div>
           )}
         </AnimatePresence>

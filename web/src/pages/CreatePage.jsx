@@ -114,9 +114,29 @@ export default function CreatePage() {
     if (file) {
       const reader = new FileReader()
       reader.onloadend = () => {
-        setPreviewUrl(reader.result)
-        setFormData({ ...formData, honoreePhoto: reader.result })
-        setErrors({ ...errors, honoreePhoto: null })
+        // La foto se achica antes de viajar: una foto de celular en base64
+        // pesa 3-6 MB y no se puede guardar en la planilla. A 900px y JPEG
+        // de calidad 0.78 el retrato se ve igual y pesa ~90 KB.
+        const img = new Image()
+        img.onload = () => {
+          const MAX = 900
+          const escala = Math.min(1, MAX / Math.max(img.width, img.height))
+          const canvas = document.createElement('canvas')
+          canvas.width = Math.round(img.width * escala)
+          canvas.height = Math.round(img.height * escala)
+          const ctx = canvas.getContext('2d')
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
+          let dataUrl = reader.result
+          try { dataUrl = canvas.toDataURL('image/jpeg', 0.78) } catch { /* queda el original */ }
+          setPreviewUrl(dataUrl)
+          setFormData((prev) => ({ ...prev, honoreePhoto: dataUrl }))
+          setErrors((prev) => ({ ...prev, honoreePhoto: null }))
+        }
+        img.onerror = () => {
+          setPreviewUrl(reader.result)
+          setFormData((prev) => ({ ...prev, honoreePhoto: reader.result }))
+        }
+        img.src = reader.result
       }
       reader.readAsDataURL(file)
     }
@@ -184,9 +204,18 @@ export default function CreatePage() {
     const status = searchParams.get('status')
     if (!status) return
     if (createdInvitation?.slug) return // ya está restaurado
+    // Puede volver del pago en OTRA pestaña (sobre todo desde la invitación
+    // compartida, con el botón "Volver al pago"): no hay estado previo.
 
+    // ?code=<slug> llega desde el botón "Volver al pago" de la invitación.
+    const codeParam = searchParams.get('code') || ''
     let saved = null
-    try { saved = JSON.parse(localStorage.getItem('invitafigus_ultimo_pedido') || 'null') } catch {}
+    try {
+      const guardado = codeParam
+        ? localStorage.getItem(`invitafigus_pedido_${codeParam}`)
+        : null
+      saved = JSON.parse(guardado || localStorage.getItem('invitafigus_ultimo_pedido') || 'null')
+    } catch {}
 
     // external_reference que devuelve MP: IF-<slug>-<plan>
     const ref = searchParams.get('external_reference') || ''
@@ -194,7 +223,7 @@ export default function CreatePage() {
     const slugFromRef = fromRef.replace(/-(base|completo)$/, '')
     const planFromRef = fromRef.endsWith('-completo') ? 'completo' : fromRef.endsWith('-base') ? 'base' : ''
 
-    const code = saved?.code || slugFromRef
+    const code = saved?.code || slugFromRef || codeParam
     if (!code) return
     const planRec = planFromRef || saved?.plan || 'base'
 
@@ -224,7 +253,7 @@ export default function CreatePage() {
       fetch(`/api/order?slug=${encodeURIComponent(code)}`)
         .then(r => r.json())
         .then(data => {
-          if (data?.order?.estado === 'ACTIVA') {
+          if (data?.order?.pagado) {
             setPaymentStatus('paid')
             setPaymentMessage('Pago acreditado. Tu invitación quedó activada.')
           }
@@ -233,7 +262,7 @@ export default function CreatePage() {
     }
   }, [searchParams, createdInvitation?.slug])
 
-  // Guarda el pedido en la planilla (estado PENDIENTE) para que el operador
+  // Guarda el pedido en la planilla (estado BORRADOR) para que el operador
   // pueda activarlo aunque el cliente cierre el navegador o pierda el link.
   const saveOrder = async (code) => {
     if (!code) return
@@ -326,6 +355,18 @@ export default function CreatePage() {
         location: formData.location || formData.address,
         ts: Date.now(),
       }))
+      // Mismo respaldo para la pantalla que se abre desde la invitación
+      // compartida: así "Ya pagué, verificar" encuentra el pedido.
+      if (createdInvitation?.slug) {
+        localStorage.setItem(`invitafigus_pedido_${createdInvitation.slug}`, JSON.stringify({
+          code: createdInvitation.slug,
+          plan,
+          childName: formData.childName || createdInvitation.childName || '',
+          date: formData.date || createdInvitation.date || '',
+          location: formData.location || createdInvitation.location || '',
+          ts: Date.now(),
+        }))
+      }
     } catch {}
 
     try {
@@ -391,7 +432,7 @@ export default function CreatePage() {
       try {
         const res = await fetch(`/api/order?slug=${encodeURIComponent(code)}`)
         const data = await res.json().catch(() => ({}))
-        if (data?.order?.estado === 'ACTIVA') {
+        if (data?.order?.pagado) {
           setPaymentStatus('paid')
           setPaymentMessage('Pago acreditado. Tu invitación quedó activada.')
           try { localStorage.removeItem('invitafigus_pending_payment') } catch {}
@@ -416,7 +457,7 @@ export default function CreatePage() {
       fetch(`/api/order?slug=${encodeURIComponent(createdInvitation.slug)}`)
         .then(r => r.json())
         .then(data => {
-          if (data?.order?.estado === 'ACTIVA') {
+          if (data?.order?.pagado) {
             setPaymentStatus('paid')
             setPaymentMessage('Pago acreditado. Tu invitación quedó activada.')
           } else {
@@ -427,6 +468,15 @@ export default function CreatePage() {
         .catch(() => setPaymentStatus('pending'))
     }
   }, [searchParams, createdInvitation?.slug])
+
+  // La foto de portada es un dataURL comprimido (~90 KB). Si la planilla no la
+  // acepta, se guarda igual en este navegador: la invitación la usa de respaldo.
+  // Así una foto nunca bloquea la creación del pedido.
+  useEffect(() => {
+    if (createdInvitation?.slug && formData.honoreePhoto) {
+      try { localStorage.setItem(`foto_${createdInvitation.slug}`, formData.honoreePhoto) } catch {}
+    }
+  }, [createdInvitation?.slug, formData.honoreePhoto])
 
   const updateField = (field, value) => {
     setFormData({ ...formData, [field]: value })
@@ -441,7 +491,7 @@ export default function CreatePage() {
             <button 
               onClick={() => {
                 // En 6 y 7 no se manda a la invitación: si el pedido todavía
-                // está PENDIENTE, esa pantalla dice "¡Creá tu invitación!" y
+                // está BORRADOR, esa pantalla dice "¡Creá tu invitación!" y
                 // parece que se perdió todo. Con la X se sale al inicio.
                 if (step === 6 || step === 7) {
                   navigate('/')
@@ -841,7 +891,7 @@ export default function CreatePage() {
                             try {
                               const res = await fetch(`/api/order?slug=${encodeURIComponent(code)}`)
                               const data = await res.json().catch(() => ({}))
-                              if (data?.order?.estado === 'ACTIVA') { setPaymentStatus('paid'); setPaymentMessage('Pago acreditado. Tu invitación quedó activada.') }
+                              if (data?.order?.pagado) { setPaymentStatus('paid'); setPaymentMessage('Pago acreditado. Tu invitación quedó activada.') }
                               else { setPaymentStatus('pending'); setPaymentMessage('Todavía no figura como pagado. Si recién pagaste, esperá 1-2 minutos y tocá de nuevo. La verificación es automática.') }
                             } catch { setPaymentStatus('pending'); setPaymentMessage('No pudimos consultar el estado. Intentá de nuevo en unos segundos.') }
                           }}
@@ -854,6 +904,12 @@ export default function CreatePage() {
                           Reabrir Mercado Pago
                         </button>
                       </div>
+                      <p className="mt-3 rounded-lg bg-white/[0.04] px-3 py-2 text-[11px] leading-relaxed text-white/45">
+                        <b className="text-white/70">¿Para qué sirve este botón?</b> Si pagaste pero esta pantalla
+                        todavía no se enteró, tocá <b className="text-[#FFD700]">“Ya pagué, verificar”</b>: le pregunta
+                        al sistema si tu pago ya está acreditado. No cobra nada y se puede tocar las veces que quieras.
+                        La mayoría de las veces se activa solo, sin que toques nada.
+                      </p>
                     </div>
 
                     <a
@@ -864,6 +920,34 @@ export default function CreatePage() {
                     >
                       💬 No tengo el número: enviar comprobante por WhatsApp
                     </a>
+                  </div>
+                )}
+
+                {paymentStatus !== 'paid' && createdInvitation?.slug && (
+                  <div className="rounded-xl border border-[#FFD700]/25 bg-[#FFD700]/[0.06] p-4 text-left">
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-[#FFD700]">Compartila ya, aunque no esté paga</p>
+                    <p className="mt-1.5 text-[11px] leading-relaxed text-white/55">
+                      El link funciona desde ahora: tus invitados pueden abrir la invitación y confirmar.
+                      Se ve con marca de agua y se limpia sola cuando se acredita el pago.
+                    </p>
+                    <div className="mt-3 flex flex-col gap-2">
+                      <button
+                        onClick={() => {
+                          const url = `${window.location.origin}/invitacion/${createdInvitation.slug}`;
+                          navigator.clipboard.writeText(url).catch(() => {});
+                          setPaymentMessage('Link copiado. Pegalo en el grupo de WhatsApp.');
+                        }}
+                        className="w-full rounded-lg border border-[#FFD700]/40 px-4 py-2.5 text-xs font-bold text-[#FFD700] hover:bg-[#FFD700]/10"
+                      >
+                        Copiar link para compartir
+                      </button>
+                      <button
+                        onClick={() => navigate(`/invitacion/${createdInvitation.slug}`)}
+                        className="w-full rounded-lg border border-white/15 px-4 py-2.5 text-xs font-semibold text-white/75 hover:bg-white/5"
+                      >
+                        Ver cómo la reciben mis invitados
+                      </button>
+                    </div>
                   </div>
                 )}
 
@@ -917,7 +1001,7 @@ export default function CreatePage() {
                   : saveStatus === 'saving' ? 'border-white/10 bg-white/[0.03] text-white/50'
                   : 'border-[#FFD700]/25 bg-[#FFD700]/[0.06] text-[#FFD700]/85'
                 }`}>
-                  {saveStatus === 'saved' && '✅ Pedido guardado en tu nombre. El operador ya lo ve en la planilla con estado PENDIENTE.'}
+                  {saveStatus === 'saved' && '✅ Pedido guardado en tu nombre. El operador ya lo ve en la planilla como BORRADOR hasta que se acredite el pago.'}
                   {saveStatus === 'saving' && 'Guardando tu pedido…'}
                   {saveStatus === 'pending' && '⚠ No pudimos guardarlo automáticamente. Mandá la foto por WhatsApp con tu código de pedido y lo cargamos a mano en segundos.'}
                   {saveStatus === 'idle' && 'Tu pedido se guarda al tocar “Pagar y activar ahora”.'}

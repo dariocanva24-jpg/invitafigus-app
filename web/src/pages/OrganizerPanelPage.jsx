@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { ArrowLeft, Users, UserX, Copy, Check, RefreshCw, Share2, Lock } from 'lucide-react'
+import { ArrowLeft, Users, UserX, Copy, Check, RefreshCw, Share2, Lock, MessageSquare } from 'lucide-react'
 import { useApp } from '../context/AppContext'
 
 const keyFor = (slug) => `invitafigus_panel_${slug}`
@@ -189,6 +189,28 @@ export default function OrganizerPanelPage() {
           ) : (
             <p className="rounded-xl border border-dashed border-white/15 px-4 py-6 text-center text-xs text-white/35">
               Nadie avisó que no va.
+            </p>
+          )}
+        </section>
+
+        <section className="mb-5">
+          <h2 className="mb-2 flex items-center gap-2 text-sm font-bold uppercase tracking-widest text-[#FFD700]">
+            <MessageSquare size={15} /> Mensajes para el cumpleañero
+          </h2>
+          {summary?.messages?.length ? (
+            <ul className="space-y-2">
+              {summary.messages.slice().reverse().map((m, i) => (
+                <li key={i} className="rounded-xl border border-[#FFD700]/20 bg-[#FFD700]/[0.06] px-4 py-3">
+                  <p className="text-sm leading-relaxed text-white/85">{m.mensaje}</p>
+                  <p className="mt-1 text-[11px] font-semibold uppercase tracking-wider text-[#FFD700]/70">
+                    — {m.nombre}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="rounded-xl border border-dashed border-white/15 px-4 py-6 text-center text-xs text-white/35">
+              Todavía nadie dejó un mensaje. Cuando un invitado confirme y escriba algo, aparece acá.
             </p>
           )}
         </section>

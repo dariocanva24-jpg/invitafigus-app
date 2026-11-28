@@ -590,6 +590,7 @@ export default function AdminPage() {
                     onChange={(e) => setEditForm({...editForm, estado: e.target.value})}
                     className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-sm focus:border-[#FFD700]/50 focus:outline-none"
                   >
+                    <option value="BORRADOR">BORRADOR</option>
                     <option value="PENDIENTE">PENDIENTE</option>
                     <option value="ACTIVA">ACTIVA</option>
                     <option value="PAUSADA">PAUSADA</option>
