@@ -179,8 +179,15 @@ export function verifyWebhookSignature({ signature, requestId, dataId, secret })
   // (reintentos, merchant_order) ese header no viene y lo firma vacío — o
   // directamente sin esa parte. Se prueban las tres formas conocidas.
   // No baja la seguridad: en todas hace falta el secreto.
+  // La documentación de MP arma el manifest CON punto y coma final:
+  //   id:<data.id>;request-id:<x-request-id>;ts:<ts>;
+  // Nuestro código lo armaba sin ese ";" — un carácter distinto cambia el HMAC
+  // entero y la firma nunca coincide. Se prueban las 6 formas conocidas.
   const lowId = String(dataId).toLowerCase()
   const manifests = [
+    { nombre: 'D', texto: `id:${lowId};request-id:${requestId || ''};ts:${ts};` },
+    { nombre: 'E', texto: `id:${lowId};request-id:;ts:${ts};` },
+    { nombre: 'F', texto: `id:${lowId};ts:${ts};` },
     { nombre: 'A', texto: `id:${lowId};request-id:${requestId || ''};ts:${ts}` },
     { nombre: 'B', texto: `id:${lowId};request-id:;ts:${ts}` },
     { nombre: 'C', texto: `id:${lowId};ts:${ts}` },
@@ -194,7 +201,7 @@ export function verifyWebhookSignature({ signature, requestId, dataId, secret })
       return { ok: true, manifest: manifest.nombre }
     }
   }
-  return { ok: false, reason: `firma no coincide (probado A/B/C · request-id ${requestId ? 'presente' : 'ausente'})` }
+  return { ok: false, reason: `firma no coincide (probado A-F · request-id ${requestId ? 'presente' : 'ausente'})` }
 }
 
 // Firma para los tests: mismo manifest que valida MP (id en minúsculas).
