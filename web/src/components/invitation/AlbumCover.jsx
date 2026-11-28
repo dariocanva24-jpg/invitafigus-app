@@ -2,7 +2,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { useState, useEffect } from 'react'
 import { getTeamById } from '../../data/teams'
 
-export default function AlbumCover({ honoreeName, team, customTeamName, onOpen }) {
+export default function AlbumCover({ honoreeName, team, customTeamName, photo = '', onOpen }) {
   const [phase, setPhase] = useState('idle') // idle → touching → tearing → revealing → done
   const [tearProgress, setTearProgress] = useState(0)
   const [isExiting, setIsExiting] = useState(false)
@@ -72,6 +72,39 @@ export default function AlbumCover({ honoreeName, team, customTeamName, onOpen }
             </span>
             <div className="h-px w-16 bg-gradient-to-l from-transparent to-white/20" />
           </div>
+
+          {/* Portada: el retrato del cumpleañero enmarcado en dorado, como la
+              tapa de un álbum. Si no hay foto, queda solo el nombre. */}
+          {photo && (
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
+              className="relative mb-5"
+            >
+              <div
+                className="absolute -inset-3 rounded-full opacity-60 blur-2xl"
+                style={{ background: `radial-gradient(circle, ${teamData.colors.secondary}55, transparent 70%)` }}
+              />
+              <div
+                className="relative h-32 w-32 overflow-hidden rounded-full md:h-36 md:w-36"
+                style={{
+                  border: '3px solid #FFD700',
+                  boxShadow: '0 0 0 4px rgba(255,215,0,0.15), 0 18px 40px rgba(0,0,0,0.55), 0 0 40px rgba(255,215,0,0.25)',
+                }}
+              >
+                <img
+                  src={photo}
+                  alt={honoreeName || 'Cumpleañero'}
+                  className="h-full w-full object-cover object-top"
+                  onError={(e) => { e.currentTarget.style.display = 'none' }}
+                />
+              </div>
+              <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 rounded-full bg-[#FFD700] px-3 py-0.5 text-[9px] font-black uppercase tracking-[0.18em] text-[#0a0e27]">
+                Portada
+              </div>
+            </motion.div>
+          )}
 
           <h1 className="text-xl font-light text-white/60 tracking-wide mb-1">
             El álbum de

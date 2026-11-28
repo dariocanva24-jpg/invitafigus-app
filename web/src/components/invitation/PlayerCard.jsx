@@ -241,18 +241,28 @@ export default function PlayerCard({ event, still = false }) {
                 </div>
               </div>
               
-              {/* Edad: el número y "años" van alineados a la derecha, pegados.
-                  Antes el número flotaba suelto y "años" caía debajo. */}
-              <div className="text-right leading-none">
-                <span className="mb-1 block text-[10px] uppercase tracking-widest text-white/50">Edad</span>
-                <span className="inline-flex items-center justify-end gap-1.5 whitespace-nowrap">
-                  <span className="text-2xl font-black leading-none text-white font-bebas tabular-nums">
+              {/* Edad: misma estructura que el bloque del rating (etiqueta
+                  arriba, número en una caja del mismo alto) para que el "40"
+                  quede centrado con "años" y no colgado del borde. */}
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] uppercase tracking-widest text-white/50">Edad</span>
+                <div
+                  className="flex items-baseline gap-1 rounded-full px-3"
+                  style={{
+                    minHeight: '2.5rem',
+                    paddingTop: '0.35rem',
+                    paddingBottom: '0.35rem',
+                    background: 'rgba(255,255,255,0.06)',
+                    border: `1px solid ${rarity.color}55`,
+                  }}
+                >
+                  <span className="text-xl font-black leading-none text-white font-bebas tabular-nums">
                     {event?.honoreeAge || event?.age || 8}
                   </span>
-                  <span className="text-[10px] font-semibold uppercase leading-none tracking-wide text-white/50">
+                  <span className="text-[10px] font-semibold uppercase leading-none tracking-wide text-white/60">
                     años
                   </span>
-                </span>
+                </div>
               </div>
             </div>
 

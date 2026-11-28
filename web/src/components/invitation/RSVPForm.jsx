@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
 import { Check, X, Plus, Minus, Loader2, MessageCircle, Users } from 'lucide-react'
 import { whatsappLinks } from '../../config/whatsapp'
+import GuestMessages from './GuestMessages'
 
 export default function RSVPForm({ event }) {
   const [form, setForm] = useState({ name: '', whatsapp: '', status: 'confirmed', guests: 0, notes: '' })
@@ -10,6 +11,8 @@ export default function RSVPForm({ event }) {
   const [error, setError] = useState('')
   const [count, setCount] = useState({ total: 0, confirmed: 0, guests: 0 })
   const [notified, setNotified] = useState(false)
+  // Mensajes que dejan los invitados: la planilla ya los devuelve con el conteo.
+  const [messages, setMessages] = useState([])
   // El navegador bloquea el envío cuando el teléfono no parece válido, pero en
   // celular ese cartel nativo casi no se ve: parecía que el botón no hacía
   // nada. Guardamos qué campos faltan y lo mostramos nosotros.
@@ -27,7 +30,10 @@ export default function RSVPForm({ event }) {
       const response = await fetch(`/api/rsvp?slug=${encodeURIComponent(slug)}`)
       if (!response.ok) return
       const data = await response.json()
-      if (data.ok) setCount(data.count)
+      if (data.ok) {
+        setCount(data.count)
+        if (Array.isArray(data.messages)) setMessages(data.messages)
+      }
     } catch {
       // Si no hay conexión, el formulario sigue funcionando.
     }
@@ -39,7 +45,12 @@ export default function RSVPForm({ event }) {
     e.preventDefault()
     setTouched(true)
     if (faltantes.length > 0) {
-      setError(`Falta ${faltantes.join(' y ')}.`)
+      // El aviso dice EXACTAMENTE qué campo falta y dónde está, y se lleva
+      // el cursor ahí: antes solo decía "falta un dato" y no se sabía cuál.
+      setError(`Para confirmar falta ${faltantes.join(' y ')}. Revisá los campos marcados en rojo.`)
+      const primero = faltantes[0].includes('nombre') ? 'rsvp-nombre' : 'rsvp-whatsapp'
+      const el = document.getElementById(primero)
+      if (el) { el.focus(); el.scrollIntoView({ behavior: 'smooth', block: 'center' }) }
       return
     }
     setSubmitting(true)
@@ -54,6 +65,7 @@ export default function RSVPForm({ event }) {
       if (!response.ok) throw new Error(data.error || 'No se pudo guardar la respuesta')
       setNotified(Boolean(data.notified))
       if (data.count) setCount(data.count)
+      if (Array.isArray(data.messages)) setMessages(data.messages)
       setSubmitted(true)
       await loadCount()
     } catch (err) {
@@ -136,6 +148,8 @@ export default function RSVPForm({ event }) {
   }
 
   return (
+    <div className="space-y-4">
+    {messages.length > 0 && <GuestMessages messages={messages} />}
     <div className="relative rounded-3xl p-6 overflow-hidden"
       style={{
         background: 'linear-gradient(135deg, rgba(0,212,255,0.05), rgba(255,107,53,0.05))',
@@ -163,6 +177,7 @@ export default function RSVPForm({ event }) {
         <div>
           <label className="block text-sm font-medium text-white/70 mb-1">Tu nombre *</label>
           <input
+            id="rsvp-nombre"
             type="text"
             value={form.name}
             onChange={(e) => { setForm((p) => ({ ...p, name: e.target.value })); setError('') }}
@@ -180,6 +195,7 @@ export default function RSVPForm({ event }) {
         <div>
           <label className="block text-sm font-medium text-white/70 mb-1">WhatsApp *</label>
           <input
+            id="rsvp-whatsapp"
             type="tel"
             value={form.whatsapp}
             onChange={(e) => { setForm((p) => ({ ...p, whatsapp: e.target.value })); setError('') }}
@@ -254,21 +270,23 @@ export default function RSVPForm({ event }) {
         )}
 
         <div>
-          <label className="block text-sm font-medium text-white/70 mb-1">Notas (opcional)</label>
+          <label className="block text-sm font-medium text-white/70 mb-1">
+            Mensaje para {event?.childName || 'el cumpleañero'} (opcional)
+          </label>
           <textarea
             value={form.notes}
             onChange={(e) => setForm((p) => ({ ...p, notes: e.target.value }))}
             rows={2}
             maxLength={300}
             className="w-full rounded-xl bg-white/5 border border-white/10 text-white placeholder-white/30 px-4 py-3 outline-none focus:border-cyan-500/50 focus:ring-2 focus:ring-cyan-500/20 transition-all resize-none"
-            placeholder="Alguna nota especial..."
+            placeholder="Escribile algo lindo: lo va a leer en su panel"
           />
           <p className="mt-1 text-right text-[10px] text-white/25">{form.notes.length}/300</p>
         </div>
 
         {touched && faltantes.length > 0 && (
-          <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
-            Completá {faltantes.join(' y ')} para confirmar.
+          <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200" role="alert">
+            Falta {faltantes.join(' y ')}. Los campos en rojo son los que hay que completar.
           </p>
         )}
         {error && (
@@ -289,6 +307,7 @@ export default function RSVPForm({ event }) {
         </motion.button>
         <p className="text-center text-[11px] text-white/30">Tu respuesta se guarda de verdad. Después podés avisar por WhatsApp.</p>
       </form>
+    </div>
     </div>
   )
 }
