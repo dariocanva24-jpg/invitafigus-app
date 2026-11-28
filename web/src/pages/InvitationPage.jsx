@@ -25,6 +25,7 @@ import SparkleField from "../components/brand/SparkleField.jsx";
 import RSVPForm from "../components/invitation/RSVPForm";
 import ShareButtons from "../components/invitation/ShareButtons";
 import Watermark from "../components/invitation/Watermark";
+import ReferralCta from "../components/invitation/ReferralCta";
 
 
 // La demo siempre queda en una fecha futura para que el contador se vea completo.
@@ -413,7 +414,11 @@ const InvitationPage = () => {
               transition={{ duration: 0.6, delay: 0.7 }}
               className="mb-6"
             >
-              <RSVPForm event={event} />
+              <RSVPForm
+                event={event}
+                bloqueadoPorPago={esBorrador}
+                onIrAPagar={esMio ? () => navigate(`/crear?status=pending&code=${encodeURIComponent(slug)}`) : undefined}
+              />
             </motion.div>
           )}
         </AnimatePresence>
@@ -449,6 +454,9 @@ const InvitationPage = () => {
             >
               <div className="h-px w-full bg-white/10 mb-6" />
               <div className="text-center space-y-4">
+                {/* CTA de referido: va en TODA invitación pública (paga o en
+                    borrador), porque el invitado es el público más caliente. */}
+                <ReferralCta />
                 <p className="text-white/40 text-sm">
                   ¿Te gustó? Creá la tuya
                 </p>
