@@ -46,6 +46,9 @@ export default function OrganizerPanelPage() {
         body: JSON.stringify({ action: 'summary', code: slug, key: passKey }),
       })
       const data = await res.json()
+      if (res.status === 402 || data.codigo === 'SIN_PAGAR') {
+        throw new Error('El panel se abre cuando la invitación está activada. Si ya pagaste, esperá un minuto y volvé a intentar.')
+      }
       if (!res.ok) throw new Error(data.error || 'No se pudo abrir el panel')
       setSummary(data)
       localStorage.setItem(keyFor(slug), passKey)
