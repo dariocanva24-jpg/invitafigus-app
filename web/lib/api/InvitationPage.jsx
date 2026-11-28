@@ -25,6 +25,7 @@ import SparkleField from "../components/brand/SparkleField.jsx";
 import RSVPForm from "../components/invitation/RSVPForm";
 import ShareButtons from "../components/invitation/ShareButtons";
 import Watermark from "../components/invitation/Watermark";
+import ReferralCta from "../components/invitation/ReferralCta";
 
 
 // La demo siempre queda en una fecha futura para que el contador se vea completo.
@@ -46,6 +47,20 @@ const InvitationPage = () => {
   const [error, setError] = useState(null);
   // Pedido sin pagar: se ve completo pero con marca de agua y aviso.
   const [esBorrador, setEsBorrador] = useState(false);
+  // ¿Esta invitación la creó quien está mirando? Se recuerda en el navegador
+  // apenas se crea el pedido, para que "Volver" nunca mande al panel de otro.
+  const [esMio, setEsMio] = useState(false);
+
+  const marcarDuenoDelPedido = () => {
+    try {
+      const suyo = Boolean(localStorage.getItem(`invitafigus_pedido_${slug}`))
+        || Boolean(localStorage.getItem(`invitafigus_panel_${slug}`))
+      setEsMio(suyo)
+      return suyo
+    } catch {
+      return false
+    }
+  };
 
   const [showCard, setShowCard] = useState(false);
   const [albumOpened, setAlbumOpened] = useState(false);
@@ -115,12 +130,23 @@ const InvitationPage = () => {
             borrador: Boolean(remoteEvent.borrador),
           };
           setEsBorrador(Boolean(remoteEvent.borrador));
+          marcarDuenoDelPedido();
           setEvent(withDemoDate(mappedEvent, slug));
           
           incrementViewsRemote(slug).catch(() => {});
         } else {
+          // Sin respuesta del servidor (o pedido sin publicar): si la
+          // invitación está guardada en ESTE navegador, el dueño la puede
+          // seguir viendo y volver al pago.
           const localEvent = getEventBySlug(slug);
           setEvent(withDemoDate(localEvent, slug));
+          if (localEvent) {
+            marcarDuenoDelPedido();
+            fetch(`/api/order?slug=${encodeURIComponent(slug)}`)
+              .then((r) => r.json())
+              .then((data) => { if (data?.order && !data.order.pagado) setEsBorrador(true) })
+              .catch(() => {});
+          }
         }
       } catch (err) {
         console.error('Error loading invitation:', err);
@@ -263,14 +289,10 @@ const InvitationPage = () => {
             mandaba al inicio y se perdían. */}
         <button
           onClick={() => {
-            const esMiPedido = (() => {
-              try {
-                return Boolean(localStorage.getItem(`invitafigus_pedido_${slug}`))
-                || Boolean(localStorage.getItem(`invitafigus_panel_${slug}`))
-              } catch { return false }
-            })();
-            if (esBorrador && esMiPedido) navigate(`/crear?status=pending&code=${encodeURIComponent(slug)}`);
-            else if (!esBorrador && esMiPedido) navigate(`/panel/${slug}`);
+            const suyo = marcarDuenoDelPedido();
+            // Sin pagar y es tuyo → a la pantalla de pago (Mercado Pago/WhatsApp).
+            if (suyo && esBorrador) navigate(`/crear?status=pending&code=${encodeURIComponent(slug)}`);
+            else if (suyo) navigate(`/panel/${slug}`);
             else navigate('/');
           }}
           className="flex items-center gap-2 text-white/50 hover:text-white/80 transition-colors text-sm"
@@ -284,28 +306,46 @@ const InvitationPage = () => {
         {esBorrador && (
           <div className="mb-4 rounded-2xl border border-[#FFD700]/40 bg-[#FFD700]/10 p-4 text-center">
             <p className="text-[11px] font-black uppercase tracking-widest text-[#FFD700]">Vista previa · sin pagar</p>
-            <p className="mt-1 text-xs leading-relaxed text-white/60">
-              Esta invitación se ve así hasta que se acredite el pago. Podés compartirla igual:
-              tus invitados ya pueden confirmar. La marca de agua desaparece sola al pagar.
-            </p>
-            <div className="mt-3 flex gap-2">
-              <button
-                onClick={() => navigate(`/crear?status=pending&code=${encodeURIComponent(slug)}`)}
-                className="flex-1 rounded-lg bg-[#FFD700] px-3 py-2 text-xs font-bold text-[#0a0e27]"
-              >
-                Ir a pagar
-              </button>
-              <button
-                onClick={() => {
-                  const url = `${window.location.origin}/invitacion/${slug}`;
-                  navigator.clipboard.writeText(url).catch(() => {});
-                  alert('Link copiado: ' + url);
-                }}
-                className="flex-1 rounded-lg border border-white/20 px-3 py-2 text-xs font-semibold text-white/80"
-              >
-                Copiar link
-              </button>
-            </div>
+
+            {esMio ? (
+              <>
+                <p className="mt-1 text-xs leading-relaxed text-white/60">
+                  Así la ven tus invitados hasta que se acredite el pago. Podés compartirla igual:
+                  ya pueden confirmar. La marca de agua desaparece sola al pagar.
+                </p>
+                <div className="mt-3 flex flex-col gap-2">
+                  <button
+                    onClick={() => navigate(`/crear?status=pending&code=${encodeURIComponent(slug)}`)}
+                    className="w-full rounded-lg bg-[#FFD700] px-3 py-2.5 text-xs font-bold text-[#0a0e27]"
+                  >
+                    Ir a pagar (Mercado Pago / WhatsApp)
+                  </button>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => {
+                        const url = `${window.location.origin}/invitacion/${slug}`;
+                        navigator.clipboard.writeText(url).catch(() => {});
+                        alert('Link copiado: ' + url);
+                      }}
+                      className="flex-1 rounded-lg border border-white/20 px-3 py-2 text-xs font-semibold text-white/80"
+                    >
+                      Copiar link
+                    </button>
+                    <button
+                      onClick={() => navigate(`/panel/${slug}`)}
+                      className="flex-1 rounded-lg border border-white/20 px-3 py-2 text-xs font-semibold text-white/80"
+                    >
+                      Mi panel
+                    </button>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <p className="mt-1 text-xs leading-relaxed text-white/60">
+                Esta invitación está en vista previa. Podés confirmar tu asistencia y dejarle un mensaje
+                al cumpleañero: todo queda guardado.
+              </p>
+            )}
           </div>
         )}
         <AnimatePresence>
@@ -374,7 +414,11 @@ const InvitationPage = () => {
               transition={{ duration: 0.6, delay: 0.7 }}
               className="mb-6"
             >
-              <RSVPForm event={event} />
+              <RSVPForm
+                event={event}
+                bloqueadoPorPago={esBorrador}
+                onIrAPagar={esMio ? () => navigate(`/crear?status=pending&code=${encodeURIComponent(slug)}`) : undefined}
+              />
             </motion.div>
           )}
         </AnimatePresence>
@@ -410,6 +454,9 @@ const InvitationPage = () => {
             >
               <div className="h-px w-full bg-white/10 mb-6" />
               <div className="text-center space-y-4">
+                {/* CTA de referido: va en TODA invitación pública (paga o en
+                    borrador), porque el invitado es el público más caliente. */}
+                <ReferralCta />
                 <p className="text-white/40 text-sm">
                   ¿Te gustó? Creá la tuya
                 </p>

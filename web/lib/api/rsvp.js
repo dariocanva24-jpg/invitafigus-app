@@ -7,6 +7,24 @@ import { toE164 } from '../server/mercadopago.js'
 
 const SLUG = /^[a-z0-9-]{1,120}$/i
 
+// Estados que significan "la invitación está activa" (el pago se acreditó).
+const ESTADOS_PAGADOS = ['ACTIVA', 'REEMBOLSADA', 'CONTRACARGO']
+
+// ¿El pedido ya se pagó? Lo consulta la confirmación antes de guardar nada.
+// El link se puede compartir sin pagar (se ve la figurita con marca de agua),
+// pero CONFIRMAR y ver la lista de invitados es lo que se compra.
+async function pedidoPagado(slug) {
+  try {
+    const order = await readFromSheets('getOrder', { slug })
+    if (!order) return { ok: false, motivo: 'pedido_inexistente' }
+    const estado = String(order.estado || '').toUpperCase()
+    return { ok: ESTADOS_PAGADOS.includes(estado), motivo: estado || 'BORRADOR' }
+  } catch {
+    // Si la planilla no responde, no se bloquea al invitado por un error nuestro.
+    return { ok: true, motivo: 'sin_verificar' }
+  }
+}
+
 export default async function handler(req, res) {
   try {
     if (req.method === 'GET') {
@@ -30,6 +48,16 @@ export default async function handler(req, res) {
       if (!status) faltan.push('si vas o no vas')
       if (faltan.length) {
         return sendJson(res, 400, { error: `Falta ${faltan.join(', ')}`, faltan })
+      }
+
+      // Las confirmaciones se abren cuando el organizador activa la invitación.
+      const pago = await pedidoPagado(String(slug))
+      if (!pago.ok) {
+        return sendJson(res, 402, {
+          error: 'Esta invitación todavía no está activada. El organizador tiene que confirmar el pago para abrir las confirmaciones.',
+          codigo: 'SIN_PAGAR',
+          estado: pago.motivo,
+        })
       }
       if (!SLUG.test(String(slug))) return sendJson(res, 400, { error: 'Slug inválido' })
       if (!['confirmed', 'declined'].includes(status)) return sendJson(res, 400, { error: 'Estado inválido' })
