@@ -13,8 +13,15 @@ export function chatUrl({ intent, detail = '', phone = OPERATOR_NUMBER }) {
   return `https://wa.me/${digits(phone)}?text=${encodeURIComponent(text)}`
 }
 
+// El mensaje de WhatsApp lleva el UTM del canal: cuando el operador recibe el
+// aviso ya sabe de dónde vino. ManyChat usa las mismas etiquetas.
+const UTM_WHATSAPP = '?utm_source=whatsapp&utm_medium=bot&utm_campaign=flujoD'
+
 export const whatsappLinks = {
-  support: () => chatUrl({ intent: 'consulta', detail: 'Hola, necesito ayuda con una invitación.' }),
+  support: () => chatUrl({
+    intent: 'consulta',
+    detail: `Hola, necesito ayuda con una invitación. Web: https://invitafigus.vercel.app/crear${UTM_WHATSAPP}`,
+  }),
 
   // Pago: mensaje claro para el operador. name = nombre del homenajeado, slug = código de pedido
   payment: (name, slug) => chatUrl({
@@ -52,5 +59,8 @@ export const whatsappLinks = {
     detail: `Tu invitación de InvitaFigus está lista: ${invitation?.nombre || '?'} (${invitation?.slug || '?'}). Link: ${link}`,
   }),
 
-  missing: () => chatUrl({ intent: 'consulta', detail: 'No encuentro mi invitación, ¿me ayudan?' }),
+  missing: () => chatUrl({
+    intent: 'consulta',
+    detail: `No encuentro mi invitación, ¿me ayudan? Web: https://invitafigus.vercel.app/crear${UTM_WHATSAPP}`,
+  }),
 }
